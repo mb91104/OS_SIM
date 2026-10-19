@@ -166,4 +166,50 @@ describe("ToyOS shell", () => {
     expect(markup).toContain("30 ms");
     expect(markup).toContain("Time slice set to 30 ms");
   });
+
+  it("drives the disk head and reports the seek total", () => {
+    interact(() => {
+      useMachine.getState().setDiskPolicy("sstf");
+      for (const c of [98, 183, 37, 122, 14, 124, 65, 67]) {
+        useMachine.getState().requestCylinder(c);
+      }
+      useUi.getState().setXrayTab("disk");
+    });
+
+    const queued = html();
+    expect(queued).toContain("Disk head");
+    expect(queued).toContain("Seek accounting");
+    expect(queued).toContain("8 waiting");
+    expect(queued).toContain("Textbook queue");
+
+    const drained = interact(() => useMachine.getState().drainDisk());
+    expect(useMachine.getState().live.disk.totalSeekTime).toBe(236);
+    expect(useMachine.getState().live.disk.queue).toHaveLength(0);
+    expect(drained).toContain("236");
+  });
+
+  it("shows the frame table, paging stats and live memory controls", () => {
+    interact(() => {
+      const pid = useMachine.getState().launch("photos");
+      useUi.getState().openApp(pid, "photos");
+      useMachine.getState().advanceTicks(5); // four cold page faults
+      useUi.getState().setXrayTab("memory");
+    });
+
+    const markup = html();
+    expect(markup).toContain("Physical memory");
+    expect(markup).toContain("4/8 frames");
+    expect(markup).toContain("Page faults");
+    expect(markup).toContain("Frame 0");
+    expect(useMachine.getState().live.memory.pageFaults).toBe(4);
+
+    const after = interact(() => {
+      useMachine.getState().setFrames(4);
+      useMachine.getState().setReplacement("fifo");
+    });
+    expect(useMachine.getState().live.memory.frames).toHaveLength(4);
+    expect(useMachine.getState().live.memory.replacement).toBe("fifo");
+    expect(after).toContain("4/4 frames");
+    expect(after).toContain("Memory resized to 4 frames");
+  });
 });

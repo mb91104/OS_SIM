@@ -75,7 +75,10 @@ export type KernelEventKind =
   | "exit"
   | "kill"
   | "priority"
-  | "config";
+  | "config"
+  | "fault"
+  | "memory"
+  | "disk";
 
 /**
  * A single line in the kernel log. `text` is written for a 16-year-old reader —
@@ -116,6 +119,11 @@ export interface MachineState {
   quantum: number;
   nextPid: number;
 
+  /** Physical memory: a fixed table of frames shared by every process. */
+  memory: MemoryState;
+  /** The disk head and the queue of cylinders waiting to be read. */
+  disk: DiskState;
+
   gantt: GanttSlice[];
   stats: MachineStats;
 
@@ -145,15 +153,23 @@ export interface MemoryState {
   pageSizeKb: number;
   pageFaults: number;
   hits: number;
+  /** Frames taken back from a process to make room for another page. */
+  evictions: number;
   replacement: "fifo" | "lru" | "optimal" | "clock";
+  /** Where the Clock algorithm's hand is pointing right now. */
+  clockHand: number;
 }
 
 export interface DiskState {
   headPosition: number;
   direction: 1 | -1;
   queue: number[];
-  policy: "fcfs" | "sstf" | "scan" | "cscan" | "look";
+  policy: "fcfs" | "sstf" | "scan" | "cscan" | "look" | "clook";
   totalSeekTime: number;
+  /** The most recent head movement, for the UI's arrow. */
+  lastMove: { from: number; to: number; seek: number; kind: "service" | "sweep" } | null;
+  /** Cylinders serviced so far, in the order the head visited them. */
+  serviced: number[];
 }
 
 export interface DeviceState {

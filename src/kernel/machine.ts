@@ -1,5 +1,24 @@
 import { getApp } from "./catalog";
+import {
+  clearQueue as clearDiskQueue,
+  createDisk,
+  drainDisk,
+  requestCylinder,
+  resetDisk,
+  setDiskPolicy as setDiskPolicyFn,
+  stepDisk,
+  type DiskPolicy,
+} from "./disk";
+import {
+  accessPage,
+  createMemory,
+  DEFAULT_FRAMES,
+  freeFramesFor,
+  resizeFrames as resizeFramesFn,
+  setReplacement as setReplacementFn,
+} from "./memory";
 import { randomInt } from "./rng";
+import type { Replacement } from "./memory";
 import type {
   GanttSlice,
   KernelEvent,
@@ -20,6 +39,9 @@ export interface MachineOptions {
   seed?: number;
   quantum?: number;
   policy?: Policy;
+  /** Physical memory size, in frames. Defaults to 8. */
+  frames?: number;
+  replacement?: import("./memory").Replacement;
 }
 
 export interface LaunchOptions {
@@ -33,13 +55,14 @@ export interface LaunchOptions {
 /** Boot a fresh machine. Nothing is running; the Desktop is empty. */
 export function createMachine(opts: MachineOptions = {}): MachineState {
   const seed = opts.seed ?? 1;
+  const frames = opts.frames ?? DEFAULT_FRAMES;
   const boot: KernelEvent = {
     id: 0,
     t: 0,
     kind: "boot",
     text: `ToyOS booted. One CPU core, Round Robin scheduling, quantum ${
       opts.quantum ?? DEFAULT_QUANTUM
-    } ms. Click an app to start a process.`,
+    } ms, ${frames} frames of memory. Click an app to start a process.`,
   };
 
   return {
@@ -52,6 +75,8 @@ export function createMachine(opts: MachineOptions = {}): MachineState {
     policy: opts.policy ?? "rr",
     quantum: opts.quantum ?? DEFAULT_QUANTUM,
     nextPid: 1,
+    memory: createMemory(frames, opts.replacement),
+    disk: createDisk(),
     gantt: [],
     stats: {
       contextSwitches: 0,
@@ -182,6 +207,7 @@ export function killProcess(state: MachineState, pid: Pid): MachineState {
     }),
     readyQueue: state.readyQueue.filter((q) => q !== pid),
     runningPid: wasRunning ? null : state.runningPid,
+    memory: freeFramesFor(state.memory, pid),
     stats: { ...state.stats, killed: state.stats.killed + 1 },
   };
 
@@ -190,8 +216,8 @@ export function killProcess(state: MachineState, pid: Pid): MachineState {
     pid,
     chip: "kill()",
     text: wasRunning
-      ? `You closed ${p.name}. The kernel kills P${pid} mid-run and frees the CPU.`
-      : `You closed ${p.name}. P${pid} is terminated and removed from the ready queue.`,
+      ? `You closed ${p.name}. The kernel kills P${pid} mid-run, frees the CPU and takes back its ${p.memPages} pages of memory.`
+      : `You closed ${p.name}. P${pid} is terminated, removed from the ready queue and its memory is freed.`,
   });
 }
 
@@ -209,7 +235,7 @@ export function setPriority(state: MachineState, pid: Pid, priority: number): Ma
   // If the process is in the ready queue and we're using Priority scheduling, reorder
   if (state.policy === "priority" && p.state === "ready" && state.readyQueue.includes(pid)) {
     const byId = new Map(next.processes.map((x) => [x.pid, x]));
-    next = { ...next, readyQueue: reorderReadyQueue(next, next.readyQueue, byId) };
+    next = { ...next, readyQueue: reorderReadyQueue(next.policy, next.readyQueue, byId) };
   }
 
   return withLog(next, {
@@ -239,13 +265,107 @@ export function setPolicy(state: MachineState, policy: Policy): MachineState {
   // Reorder the ready queue under the new policy
   if (next.readyQueue.length > 0) {
     const byId = new Map(next.processes.map((x) => [x.pid, x]));
-    next = { ...next, readyQueue: reorderReadyQueue(next, next.readyQueue, byId) };
+    next = { ...next, readyQueue: reorderReadyQueue(next.policy, next.readyQueue, byId) };
   }
 
   return withLog(next, {
     kind: "config",
     text: `Scheduling policy set to ${policy.toUpperCase()}.`,
   });
+}
+
+/** Change how many physical frames (4 KB each) the machine has. */
+export function setFrames(state: MachineState, frames: number): MachineState {
+  const next: MachineState = { ...state, memory: resizeFramesFn(state.memory, frames) };
+  if (next.memory === state.memory) return state;
+  return withLog(next, {
+    kind: "memory",
+    text: `Memory resized to ${next.memory.frames.length} frames — ${
+      next.memory.frames.length * next.memory.pageSizeKb
+    } KB of RAM.`,
+  });
+}
+
+/** Choose the page replacement algorithm used when memory is full. */
+export function setReplacement(state: MachineState, replacement: Replacement): MachineState {
+  const next: MachineState = { ...state, memory: setReplacementFn(state.memory, replacement) };
+  if (next.memory === state.memory) return state;
+  return withLog(next, {
+    kind: "memory",
+    text: `Page replacement policy set to ${replacement.toUpperCase()}. When memory is full, the kernel will evict a page this way.`,
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Disk syscalls — the Files app asking for blocks by cylinder
+ * ------------------------------------------------------------------ */
+
+export function diskRequest(state: MachineState, cylinder: number): MachineState {
+  const next: MachineState = { ...state, disk: requestCylinder(state.disk, cylinder) };
+  const c = next.disk.queue[next.disk.queue.length - 1];
+  const waiting = next.disk.queue.length;
+  return withLog(next, {
+    kind: "disk",
+    chip: `seek(${c})`,
+    text: `A read request arrived for cylinder ${c}. The disk queue now holds ${waiting} request${
+      waiting === 1 ? "" : "s"
+    }.`,
+  });
+}
+
+export function setDiskPolicy(state: MachineState, policy: DiskPolicy): MachineState {
+  const next: MachineState = { ...state, disk: setDiskPolicyFn(state.disk, policy) };
+  if (next.disk === state.disk) return state;
+  return withLog(next, {
+    kind: "config",
+    text: `Disk scheduling policy set to ${policy.toUpperCase()}. Seek totals are reset so the policies compare fairly.`,
+  });
+}
+
+/** Move the head to the next cylinder the policy chose. */
+export function diskStep(state: MachineState): MachineState {
+  const before = state.disk;
+  const after = stepDisk(before);
+  if (after === before) return state;
+  const move = after.lastMove!;
+  return withLog(
+    { ...state, disk: after },
+    {
+      kind: "disk",
+      text:
+        move.kind === "sweep"
+          ? `Disk head swept ${move.from} → ${move.to} (${move.seek} cylinders) and is turning around.`
+          : `Disk head moved ${move.from} → ${move.to} (${move.seek} cylinders). ${after.queue.length} request${
+              after.queue.length === 1 ? "" : "s"
+            } still waiting.`,
+    },
+  );
+}
+
+/** Service the whole queue at once and report the total seek time. */
+export function diskDrain(state: MachineState): MachineState {
+  const after = drainDisk(state.disk);
+  if (after.queue.length === state.disk.queue.length) return state;
+  return withLog(
+    { ...state, disk: after },
+    {
+      kind: "disk",
+      text: `Disk queue drained in ${after.serviced.length} moves. Total seek time: ${after.totalSeekTime} cylinders.`,
+    },
+  );
+}
+
+export function diskClear(state: MachineState): MachineState {
+  const next: MachineState = { ...state, disk: clearDiskQueue(state.disk) };
+  if (next.disk === state.disk) return state;
+  return withLog(next, { kind: "disk", text: "The pending disk requests were cleared." });
+}
+
+export function diskReset(state: MachineState): MachineState {
+  return withLog(
+    { ...state, disk: resetDisk(state.disk) },
+    { kind: "disk", text: "Disk head parked and its request history forgotten." },
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -259,21 +379,20 @@ export function setPolicy(state: MachineState, policy: Policy): MachineState {
  */
 function checkPreemption(
   policy: Policy,
-  prev: MachineState,
+  processes: Pcb[],
   running: Pcb,
   readyQueue: Pid[],
-  byId: Map<Pid, Pcb>,
 ): Pid[] | null {
   if (policy !== "srtf" || readyQueue.length === 0) return null;
 
-  const best = readyQueue[0];
-  const bestProc = byId.get(best);
+  const byId = new Map(processes.map((p) => [p.pid, p]));
+  const bestProc = byId.get(readyQueue[0]);
   if (!bestProc) return null;
 
   if (bestProc.burstRemaining < running.burstRemaining) {
     // Preempt running: put it back in ready queue, re-order, dispatch will pick new head next tick
     const newQueue = [...readyQueue, running.pid];
-    return reorderReadyQueue(prev, newQueue, byId);
+    return reorderReadyQueue(policy, newQueue, byId);
   }
   return null;
 }
@@ -289,14 +408,29 @@ function chooseNext(readyQueue: Pid[]): Pid | undefined {
 }
 
 /**
+ * How many ticks of a process's own CPU time will pass before it wants `page`
+ * again. ToyOS gives every process a fixed, repeating page walk (0, 1, 2, …
+ * back to 0), so this is exact for the running process — which is all Belady's
+ * OPT needs to be correct in the classic single-process exercise, and a
+ * reasonable forward estimate when several processes share memory.
+ */
+function nextUseDistance(p: Pcb, page: number): number {
+  if (p.memPages <= 0) return Number.MAX_SAFE_INTEGER;
+  const spent = p.burstTotal - p.burstRemaining;
+  const current = spent % p.memPages;
+  const d = (page - current + p.memPages) % p.memPages;
+  return d === 0 ? p.memPages : d;
+}
+
+/**
  * Re-order the ready queue according to the active policy. Called after any
  * change that affects scheduling order: new admission, quantum expiry,
  * SRTF preemption check, priority change.
  */
-function reorderReadyQueue(state: MachineState, queue: Pid[], byId: Map<Pid, Pcb>): Pid[] {
+function reorderReadyQueue(policy: Policy, queue: Pid[], byId: Map<Pid, Pcb>): Pid[] {
   const procs = queue.map((pid) => byId.get(pid)!).filter((p): p is Pcb => !!p);
 
-  switch (state.policy) {
+  switch (policy) {
     case "rr":
     case "fcfs":
       return queue; // FIFO arrival order
@@ -351,6 +485,7 @@ export function tick(prev: MachineState): MachineState {
   let runningPid = prev.runningPid;
   let gantt = prev.gantt;
   let stats = prev.stats;
+  let memory = prev.memory;
   let log = prev.log;
   let nextEventId = prev.nextEventId;
   const admittedThisTick = new Set<Pid>();
@@ -363,6 +498,11 @@ export function tick(prev: MachineState): MachineState {
     processes = patchProcess(processes, pid, changes);
   };
   const get = (pid: Pid) => processes.find((p) => p.pid === pid);
+  /** Best-effort future knowledge, only consulted by the OPT policy. */
+  const nextUse = (pid: Pid, page: number): number => {
+    const proc = get(pid);
+    return proc ? nextUseDistance(proc, page) : Number.MAX_SAFE_INTEGER;
+  };
 
   /* 1. Admission — a brand new process joins the ready queue. */
   const byId = new Map(processes.map((p) => [p.pid, p]));
@@ -380,12 +520,16 @@ export function tick(prev: MachineState): MachineState {
   }
 
   // Re-order the queue after all admissions for this tick
-  readyQueue = reorderReadyQueue(prev, readyQueue, byId);
+  readyQueue = reorderReadyQueue(prev.policy, readyQueue, byId);
 
-  /* 2. Dispatch — give the CPU to the head of the ready queue. */
+  /* 2. Dispatch — give the CPU to the head of the ready queue.
+   *    A process admitted on this same tick is not eligible yet, and neither is
+   *    anything behind it: the scheduler always obeys the head of the queue.
+   *    That is what makes the New → Ready → Running chain visible instead of
+   *    instantaneous, and it keeps the policy order honest under SRTF. */
   if (runningPid === null) {
-    const eligible = readyQueue.filter((pid) => !admittedThisTick.has(pid));
-    const next = chooseNext(eligible);
+    const head = readyQueue[0];
+    const next = head !== undefined && !admittedThisTick.has(head) ? chooseNext(readyQueue) : undefined;
     if (next !== undefined) {
       const idx = readyQueue.indexOf(next);
       readyQueue = [...readyQueue.slice(0, idx), ...readyQueue.slice(idx + 1)];
@@ -427,6 +571,25 @@ export function tick(prev: MachineState): MachineState {
       const used = p.quantumUsed + 1;
       stats = { ...stats, busyTicks: stats.busyTicks + 1 };
 
+      /* The process works on the next page of its working set. It walks its
+       * pages 0, 1, 2, … and back to 0 as it receives CPU time, so a page it
+       * has not touched in a while may well have been paged out by now. */
+      if (p.memPages > 0) {
+        const page = (p.burstTotal - p.burstRemaining) % p.memPages;
+        const access = accessPage(memory, p.pid, page, now, nextUse);
+        memory = access.memory;
+        if (!access.hit) {
+          emit({
+            kind: "fault",
+            pid: p.pid,
+            chip: "page fault",
+            text: access.evicted
+              ? `${p.name} (P${p.pid}) needed page ${page}, which was not in memory. Frame ${access.frameIndex} was reused: P${access.evicted.pid}'s page ${access.evicted.page} was evicted (${memory.replacement.toUpperCase()}).`
+              : `${p.name} (P${p.pid}) needed page ${page}, which was not in memory. The kernel loaded it into free frame ${access.frameIndex}.`,
+          });
+        }
+      }
+
       const last: GanttSlice | undefined = gantt[gantt.length - 1];
       if (last && last.pid === p.pid && last.end === now - 1) {
         gantt = [...gantt.slice(0, -1), { ...last, end: now }];
@@ -444,6 +607,7 @@ export function tick(prev: MachineState): MachineState {
         });
         runningPid = null;
         stats = { ...stats, completed: stats.completed + 1 };
+        memory = freeFramesFor(memory, p.pid);
         emit({
           kind: "exit",
           pid: p.pid,
@@ -451,20 +615,26 @@ export function tick(prev: MachineState): MachineState {
           text: `${p.name} (P${p.pid}) finished all its work and exited. Its memory and PID are released.`,
         });
       } else {
-        const newQueue = checkPreemption(prev.policy, prev, p, readyQueue, byId);
+        // Persist this tick's work first, so the SRTF check compares the
+        // running process's *current* remaining time against the queue head.
+        patch(p.pid, { burstRemaining: remaining, quantumUsed: used });
+        const updated = get(p.pid);
+        const newQueue = updated
+          ? checkPreemption(prev.policy, processes, updated, readyQueue)
+          : null;
         if (newQueue) {
           // SRTF preemption
-          patch(p.pid, { burstRemaining: remaining, state: "ready", quantumUsed: 0 });
+          patch(p.pid, { state: "ready", quantumUsed: 0 });
           readyQueue = newQueue;
           runningPid = null;
           stats = { ...stats, contextSwitches: stats.contextSwitches + 1 };
           emit({
             kind: "preempt",
             pid: p.pid,
-            text: `P${p.pid} preempted — P${readyQueue[0]} now has less remaining time (SRTF).`,
+            text: `P${p.pid} preempted — P${newQueue[0]} now has less remaining time (SRTF).`,
           });
         } else if (prev.policy === "rr" && used >= prev.quantum) {
-          patch(p.pid, { burstRemaining: remaining, state: "ready", quantumUsed: 0 });
+          patch(p.pid, { state: "ready", quantumUsed: 0 });
           readyQueue = [...readyQueue, p.pid];
           runningPid = null;
           stats = { ...stats, quantumExpiries: stats.quantumExpiries + 1 };
@@ -473,8 +643,6 @@ export function tick(prev: MachineState): MachineState {
             pid: p.pid,
             text: `P${p.pid} used its full ${prev.quantum} ms quantum — preempted and sent to the back of the queue.`,
           });
-        } else {
-          patch(p.pid, { burstRemaining: remaining, quantumUsed: used });
         }
       }
     }
@@ -488,6 +656,7 @@ export function tick(prev: MachineState): MachineState {
     runningPid,
     gantt,
     stats,
+    memory,
     log,
     nextEventId,
   };

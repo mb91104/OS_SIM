@@ -4,6 +4,8 @@ import { STATE_LABEL, STATE_ORDER, STATE_TINT } from "../../lib/format";
 import { useKernelState } from "../../state/useMachine";
 import { useUi } from "../../state/useUi";
 import { InspectorSection } from "./InspectorSection";
+import { DiskSection } from "./DiskSection";
+import { MemorySection } from "./MemorySection";
 import { PcbSection } from "./PcbSection";
 
 /** A clickable process chip, used by every queue view. */
@@ -150,8 +152,10 @@ export function XrayPanel() {
   if (!xrayOpen) return null;
 
   const tabs: { id: typeof tab; label: string }[] = [
-    { id: "cpu", label: "CPU & queues" },
+    { id: "cpu", label: "CPU" },
     { id: "processes", label: "Processes" },
+    { id: "memory", label: "Memory" },
+    { id: "disk", label: "Disk" },
     { id: "inspector", label: "Inspect" },
   ];
 
@@ -182,6 +186,10 @@ export function XrayPanel() {
       )}
 
       {tab === "processes" && <PcbSection />}
+
+      {tab === "memory" && <MemorySection />}
+
+      {tab === "disk" && <DiskSection />}
 
       {tab === "inspector" && <InspectorSection />}
     </aside>

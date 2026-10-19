@@ -1,5 +1,6 @@
 import { appForPid } from "../../kernel/catalog";
 import { metricsAt } from "../../kernel/machine";
+import { residentPages } from "../../kernel/memory";
 import { STATE_FRIENDLY, STATE_LABEL, STATE_TINT, formatClock } from "../../lib/format";
 import { useKernelState, useMachine } from "../../state/useMachine";
 import { useUi } from "../../state/useUi";
@@ -37,6 +38,7 @@ export function InspectorSection() {
   const app = appForPid(p.appId);
   const m = metricsAt(p, state.now);
   const tint = STATE_TINT[p.state];
+  const resident = residentPages(state.memory, p.pid);
   const events = state.log.filter((e) => e.pid === p.pid).slice(-3);
 
   return (
@@ -97,6 +99,12 @@ export function InspectorSection() {
           <span>Priority</span>
           <b>{p.priority} / 5</b>
         </div>
+        <div className="metric">
+          <span>Pages in RAM</span>
+          <b>
+            {resident.length}/{p.memPages}
+          </b>
+        </div>
       </div>
 
       {m.finished && (
@@ -113,8 +121,12 @@ export function InspectorSection() {
       )}
 
       <p className="note">
-        This process declares {p.memPages} pages of memory. Memory allocation and paging arrive in
-        milestones M3 and M4 — for now the number is recorded but nothing is stored.
+        It declares {p.memPages} pages ({p.memPages * state.memory.pageSizeKb} KB).{" "}
+        {p.state === "terminated"
+          ? "Its frames were handed back to the free pool when it exited."
+          : resident.length === 0
+          ? "None of its pages are in RAM yet — it has not needed the CPU since it was created."
+          : `${resident.length} ${resident.length === 1 ? "page is" : "pages are"} in RAM (page ${resident.join(", ")}). When memory is full the kernel evicts a victim using ${state.memory.replacement.toUpperCase()}.`}
       </p>
 
       <div style={{ marginTop: 9, display: "flex", gap: 6 }}>

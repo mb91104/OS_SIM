@@ -8,6 +8,14 @@ import {
   setPolicy as setPolicyFn,
   setPriority,
   setQuantum as setQuantumFn,
+  setFrames as setFramesFn,
+  setReplacement as setReplacementFn,
+  diskRequest as diskRequestFn,
+  diskStep as diskStepFn,
+  diskDrain as diskDrainFn,
+  diskClear as diskClearFn,
+  diskReset as diskResetFn,
+  setDiskPolicy as setDiskPolicyFn,
 } from "../kernel/machine";
 import type { MachineState, Pid } from "../kernel/types";
 
@@ -47,7 +55,18 @@ interface MachineStore {
   prioritise: (pid: Pid, priority: number) => void;
   setQuantum: (quantum: number) => void;
   setPolicy: (policy: import("../kernel/types").Policy) => void;
-  reset: () => void;
+  setFrames: (frames: number) => void;
+  setReplacement: (replacement: import("../kernel/memory").Replacement) => void;
+
+  /* disk */
+  setDiskPolicy: (policy: import("../kernel/disk").DiskPolicy) => void;
+  requestCylinder: (cylinder: number) => void;
+  stepDisk: () => void;
+  drainDisk: () => void;
+  clearDisk: () => void;
+  resetDisk: () => void;
+
+  reset: (seed?: number) => void;
 }
 
 function appendHistory(history: MachineState[], states: MachineState[]): MachineState[] {
@@ -141,8 +160,24 @@ export const useMachine = create<MachineStore>()((set, get) => {
 
     setPolicy: (policy) => commit(setPolicyFn(get().live, policy)),
 
-    reset: () => {
-      const fresh = createMachine({ seed: DEFAULT_SEED });
+    setFrames: (frames) => commit(setFramesFn(get().live, frames)),
+
+    setReplacement: (replacement) => commit(setReplacementFn(get().live, replacement)),
+
+    setDiskPolicy: (policy) => commit(setDiskPolicyFn(get().live, policy)),
+
+    requestCylinder: (cylinder) => commit(diskRequestFn(get().live, cylinder)),
+
+    stepDisk: () => commit(diskStepFn(get().live)),
+
+    drainDisk: () => commit(diskDrainFn(get().live)),
+
+    clearDisk: () => commit(diskClearFn(get().live)),
+
+    resetDisk: () => commit(diskResetFn(get().live)),
+
+    reset: (seed) => {
+      const fresh = createMachine({ seed: seed ?? DEFAULT_SEED });
       set({ live: fresh, history: [fresh], viewIndex: 0, running: false });
     },
   };

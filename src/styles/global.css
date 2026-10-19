@@ -1031,6 +1031,131 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 600;
 }
 
+/* memory / frame table */
+
+.framegrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-height: 52px;
+  padding: 6px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: left;
+}
+
+.frame--free {
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted-2);
+}
+
+.frame--used {
+  cursor: pointer;
+}
+
+.frame--used:hover {
+  background: var(--surface-3);
+}
+
+.frame.is-selected {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.frame__idx {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: var(--muted-2);
+}
+
+.frame__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-weight: 650;
+}
+
+.frame__body small {
+  display: block;
+  width: 100%;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.memctl {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.memctl__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.memctl__row .slider,
+.memctl__row .policy-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* disk */
+
+.disk-track {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-bottom: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.diskform {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.diskform .btn {
+  padding: 7px 10px;
+}
+
+.diskform__input {
+  width: 78px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.diskform__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 /* PCB table */
 
 .pcbtable {
@@ -1209,6 +1334,24 @@ input[type="range"]::-moz-range-thumb {
 .console__line[data-kind="syscall"] .console__text,
 .console__line[data-kind="admit"] .console__text {
   color: #a9bcff;
+}
+
+.console__line[data-kind="fault"] .console__text {
+  color: var(--violet);
+}
+
+.console__line[data-kind="fault"] .chip {
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.45);
+  color: #d5c7ff;
+}
+
+.console__line[data-kind="memory"] .console__text {
+  color: var(--violet);
+}
+
+.console__line[data-kind="disk"] .console__text {
+  color: #67e8f9;
 }
 
 .chip {

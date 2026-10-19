@@ -56,8 +56,8 @@ export function AppWindow({ proc }: { proc: Pcb }) {
             ))}
           </div>
           <p className="note">
-            Filters need both CPU time and several pages of memory. This is the app that will make
-            memory run out in a later milestone.
+            Filters need both CPU time and several pages of memory. Open the X-ray panel's Memory tab:
+            four pages do not always fit in RAM at once.
           </p>
         </div>
       );
@@ -77,8 +77,8 @@ export function AppWindow({ proc }: { proc: Pcb }) {
             </div>
           ))}
           <p className="note">
-            Reading a file means asking the disk for specific blocks. The disk head, and the order it
-            visits those blocks, arrives in milestone M5.
+            Reading a file means asking the disk for specific blocks. Open the X-ray panel's Disk tab
+            to watch the head travel between them.
           </p>
         </div>
       );

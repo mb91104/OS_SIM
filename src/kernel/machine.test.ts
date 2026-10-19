@@ -243,10 +243,11 @@ describe("FCFS — first come first served", () => {
 describe("SJF — shortest job first (non-preemptive)", () => {
   /**
    * Same three jobs: P1=24, P2=3, P3=3.
-   * At t=2, ready queue ordered by burst: P2, P3, P1.
-   * P2 runs 2–5, P3 runs 5–8, P1 runs 8–32.
-   * Waiting: P1=8, P2=2, P3=5 → avg = 5
-   * Turnaround: P1=32, P2=5, P3=8 → avg = 15
+   * At t=1 all three are admitted; at t=2 the queue is ordered by burst: P2, P3, P1.
+   * P2 runs 2–4 (3 ticks), completes at 4.
+   * P3 runs 5–7, completes at 7.
+   * P1 runs 8–31 (24 ticks), completes at 31.
+   * Waiting = completion − arrival − burst: P2=1, P3=4, P1=7 → avg = 4
    */
   it("picks the shortest burst first", () => {
     const m = machineWithBursts([24, 3, 3]);
@@ -254,10 +255,10 @@ describe("SJF — shortest job first (non-preemptive)", () => {
     expect(s.processes[1].completionTime).toBeLessThan(s.processes[0].completionTime!);
     expect(s.processes[2].completionTime).toBeLessThan(s.processes[0].completionTime!);
     const rows = s.processes.map(metricsFor);
-    expect(rows[1]!.waiting).toBe(2); // P2 runs first after admission+dispatch delay
-    expect(rows[2]!.waiting).toBe(5);
-    expect(rows[0]!.waiting).toBe(8);
-    expect(averageMetrics(s.processes).avgWaiting).toBeCloseTo(5, 10);
+    expect(rows[1]!.waiting).toBe(1); // P2 runs first after the admission tick
+    expect(rows[2]!.waiting).toBe(4);
+    expect(rows[0]!.waiting).toBe(7);
+    expect(averageMetrics(s.processes).avgWaiting).toBeCloseTo(4, 10);
   });
 });
 
@@ -296,10 +297,13 @@ describe("Priority — lower number = higher priority (non-preemptive)", () => {
    * P1: burst=10, priority=3
    * P2: burst=1,  priority=1
    * P3: burst=2,  priority=2
-   * All arrive together. At t=2, queue ordered by priority: P2, P3, P1.
-   * P2 runs 2–3, P3 runs 3–5, P1 runs 5–15.
-   * Waiting: P2=2, P3=3, P1=5 → avg = 10/3 ≈ 3.33
-   * Turnaround: P2=3, P3=5, P1=15 → avg = 23/3 ≈ 7.67
+   * All arrive together. At t=1 all admitted; at t=2 the queue is ordered by
+   * priority: P2, P3, P1.
+   * P2 runs 2–2 (1 tick), completes at 2.
+   * P3 runs 3–4 (2 ticks), completes at 4.
+   * P1 runs 5–14 (10 ticks), completes at 14.
+   * Waiting: P2=1, P3=2, P1=4 → avg = 7/3 ≈ 2.33
+   * Turnaround: P2=2, P3=4, P1=14 → avg = 20/3 ≈ 6.67
    */
   it("picks highest priority first", () => {
     let m = createMachine({ seed: 1, policy: "priority" });
@@ -313,25 +317,25 @@ describe("Priority — lower number = higher priority (non-preemptive)", () => {
     expect(s.processes[1].completionTime).toBeLessThan(s.processes[2].completionTime!);
     expect(s.processes[2].completionTime).toBeLessThan(s.processes[0].completionTime!);
     const rows = s.processes.map(metricsFor);
-    expect(rows[1]!.waiting).toBe(2);
-    expect(rows[2]!.waiting).toBe(3);
-    expect(rows[0]!.waiting).toBe(5);
-    expect(averageMetrics(s.processes).avgWaiting).toBeCloseTo(10 / 3, 10);
+    expect(rows[1]!.waiting).toBe(1);
+    expect(rows[2]!.waiting).toBe(2);
+    expect(rows[0]!.waiting).toBe(4);
+    expect(averageMetrics(s.processes).avgWaiting).toBeCloseTo(7 / 3, 10);
   });
 
-  it("reorders ready queue when priority changes", () => {
+  it("reorders the ready queue when a waiting process's priority changes", () => {
     let m = createMachine({ seed: 1, policy: "priority" });
     m = launchApp(m, "browser", { burst: 10 });
-    m = setPriority(m, 1, 3); // P1 priority 3
-    m = launchApp(m, "music", { burst: 1 });
-    m = setPriority(m, 2, 2); // P2 priority 2 (higher)
-    m = advance(m, 2); // t=1 admit both, t=2 dispatch P2 (higher priority)
-    // After t=2: P2 running, P1 in ready queue
-    expect(m.readyQueue).toEqual([1]);
+    m = setPriority(m, 1, 4); // P1 priority 4
+    m = launchApp(m, "music", { burst: 10 });
+    m = setPriority(m, 2, 3); // P2 priority 3 — runs first
+    m = launchApp(m, "photos", { burst: 10 });
+    m = setPriority(m, 3, 5); // P3 priority 5 — waits behind P1
+    m = advance(m, 2); // t=1 admit all, t=2 dispatch P2
     expect(m.runningPid).toBe(2);
-    m = setPriority(m, 1, 5); // P1 lowest
-    m = setPriority(m, 2, 1); // P2 highest
-    expect(m.readyQueue[0]).toBe(1);
+    expect(m.readyQueue).toEqual([1, 3]);
+    m = setPriority(m, 3, 1); // P3 becomes the most important waiting process
+    expect(m.readyQueue).toEqual([3, 1]);
   });
 });
 

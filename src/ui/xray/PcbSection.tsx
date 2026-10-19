@@ -1,4 +1,5 @@
 import { averageMetrics, metricsAt } from "../../kernel/machine";
+import { residentPages } from "../../kernel/memory";
 import { STATE_LABEL, STATE_TINT, formatAverage, formatPercent } from "../../lib/format";
 import { useKernelState } from "../../state/useMachine";
 import { useUi } from "../../state/useUi";
@@ -42,6 +43,7 @@ export function PcbSection() {
             <th>State</th>
             <th>Pri</th>
             <th title="CPU time still owed">Left</th>
+            <th title="Pages currently resident in RAM">RAM</th>
             <th title="Time spent waiting for the CPU">Wait</th>
             <th title="Total time from arrival to finishing">Turn</th>
           </tr>
@@ -63,6 +65,9 @@ export function PcbSection() {
                 </td>
                 <td>{p.priority}</td>
                 <td className={p.burstRemaining === 0 ? "dim" : ""}>{p.burstRemaining}</td>
+                <td className={p.state === "terminated" ? "dim" : ""}>
+                  {residentPages(state.memory, p.pid).length}/{p.memPages}
+                </td>
                 <td className={m.finished ? "" : "dim"}>{m.waiting}</td>
                 <td className={m.finished ? "" : "dim"}>{m.turnaround}</td>
               </tr>
@@ -98,6 +103,10 @@ export function PcbSection() {
         <div className="metric">
           <span>Avg turnaround</span>
           <b>{avg.count === 0 ? "—" : `${formatAverage(avg.avgTurnaround)} ms`}</b>
+        </div>
+        <div className="metric">
+          <span>Page faults</span>
+          <b>{state.memory.pageFaults}</b>
         </div>
       </div>
 

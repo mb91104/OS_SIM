@@ -21,7 +21,7 @@ export interface Toast {
   tone: "info" | "done" | "killed";
 }
 
-export type XrayTab = "cpu" | "processes" | "inspector";
+export type XrayTab = "cpu" | "processes" | "memory" | "disk" | "inspector";
 
 /** Approximate width of the Desktop area, used to place windows sensibly. */
 function desktopWidth(xrayOpen: boolean): number {

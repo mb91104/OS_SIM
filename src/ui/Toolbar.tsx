@@ -1,5 +1,6 @@
 import { QUANTUM_MAX, QUANTUM_MIN } from "../kernel/machine";
 import { formatClock } from "../lib/format";
+import { copyScenarioLink } from "../state/scenario";
 import { useIsLive, useKernelState, useMachine } from "../state/useMachine";
 import { useUi } from "../state/useUi";
 
@@ -34,9 +35,20 @@ export function Toolbar() {
   const closeAll = useUi((s) => s.closeAll);
   const xrayOpen = useUi((s) => s.xrayOpen);
   const setXrayOpen = useUi((s) => s.setXrayOpen);
+  const toast = useUi((s) => s.toast);
 
   const started = state.processes.length > 0;
   const isRR = state.policy === "rr";
+
+  const share = async () => {
+    const { url, copied } = await copyScenarioLink(useMachine.getState().live);
+    toast(
+      copied
+        ? "Scenario link copied — open it to replay this exact setup."
+        : `Copy blocked by the browser. Link: ${url}`,
+      "info",
+    );
+  };
 
   return (
     <header className="toolbar">
@@ -113,6 +125,14 @@ export function Toolbar() {
 
       <div className="toolbar__spacer" />
 
+      <button
+        className="btn"
+        onClick={() => void share()}
+        title="Copy a link that rebuilds this exact setup — same seed, same settings, same apps"
+      >
+        <span className="btn__icon">🔗</span>
+        Share
+      </button>
       <button
         className={`btn ${xrayOpen ? "btn--primary" : ""}`}
         onClick={() => setXrayOpen(!xrayOpen)}
