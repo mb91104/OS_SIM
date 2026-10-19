@@ -1,5 +1,21 @@
 import { getApp } from "./catalog";
 import {
+  acquire,
+  createDevices,
+  deviceName,
+  dropFromQueues,
+  findDeadlock,
+  release,
+  releaseAll,
+} from "./devices";
+import {
+  allocateFile,
+  createFs,
+  deleteFile as deleteFileFn,
+  listFiles,
+  readCylinders,
+} from "./fs";
+import {
   clearQueue as clearDiskQueue,
   createDisk,
   drainDisk,
@@ -42,6 +58,8 @@ export interface MachineOptions {
   /** Physical memory size, in frames. Defaults to 8. */
   frames?: number;
   replacement?: import("./memory").Replacement;
+  /** Turn on printers/cameras/speakers. Off by default so scheduler tests stay exact. */
+  devices?: boolean;
 }
 
 export interface LaunchOptions {
@@ -77,6 +95,11 @@ export function createMachine(opts: MachineOptions = {}): MachineState {
     nextPid: 1,
     memory: createMemory(frames, opts.replacement),
     disk: createDisk(),
+    devices: createDevices(),
+    devicesEnabled: opts.devices ?? false,
+    deadlock: null,
+    fs: createFs(),
+    filesRead: 0,
     gantt: [],
     stats: {
       contextSwitches: 0,
@@ -114,6 +137,30 @@ function patchProcess(
   changes: Partial<Pcb>,
 ): Pcb[] {
   return processes.map((p) => (p.pid === pid ? { ...p, ...changes } : p));
+}
+
+/**
+ * Move processes that were just handed a device from Waiting back to Ready.
+ * Kept as a pure helper because both the clock and the device syscalls need it.
+ */
+function wakeWaiters(
+  processes: Pcb[],
+  readyQueue: Pid[],
+  grants: { pid: Pid; deviceId: string }[],
+): { processes: Pcb[]; readyQueue: Pid[] } {
+  let nextProcesses = processes;
+  let nextQueue = readyQueue;
+  for (const grant of grants) {
+    const waiting = nextProcesses.find((p) => p.pid === grant.pid);
+    const held = waiting?.heldDevices ?? [];
+    nextProcesses = patchProcess(nextProcesses, grant.pid, {
+      state: "ready",
+      waitingFor: null,
+      heldDevices: held.includes(grant.deviceId) ? held : [...held, grant.deviceId],
+    });
+    if (!nextQueue.includes(grant.pid)) nextQueue = [...nextQueue, grant.pid];
+  }
+  return { processes: nextProcesses, readyQueue: nextQueue };
 }
 
 function findProcess(state: MachineState, pid: Pid): Pcb | undefined {
@@ -162,6 +209,8 @@ export function launchApp(
     memPages: app.memPages,
     color: app.color,
     burstAtReady: burst,
+    heldDevices: [],
+    waitingFor: null,
   };
 
   return withLog(
@@ -197,28 +246,249 @@ export function killProcess(state: MachineState, pid: Pid): MachineState {
   if (!p || p.state === "terminated") return state;
 
   const wasRunning = state.runningPid === pid;
-  const next: MachineState = {
-    ...state,
-    processes: patchProcess(state.processes, pid, {
+  const released = releaseAll(state.devices, pid);
+  const devices = dropFromQueues(released.devices, pid);
+  const woken = wakeWaiters(
+    patchProcess(state.processes, pid, {
       state: "terminated",
       exitReason: "killed",
       completionTime: state.now,
       quantumUsed: 0,
+      waitingFor: null,
+      heldDevices: [],
     }),
-    readyQueue: state.readyQueue.filter((q) => q !== pid),
+    state.readyQueue.filter((q) => q !== pid),
+    released.granted,
+  );
+
+  const next: MachineState = {
+    ...state,
+    processes: woken.processes,
+    readyQueue: woken.readyQueue,
     runningPid: wasRunning ? null : state.runningPid,
     memory: freeFramesFor(state.memory, pid),
+    devices,
+    deadlock: state.devicesEnabled ? findDeadlock(devices) : null,
     stats: { ...state.stats, killed: state.stats.killed + 1 },
   };
 
+  const handed = released.granted.length
+    ? ` The freed device is handed to P${released.granted.map((g) => g.pid).join(", P")}.`
+    : "";
   return withLog(next, {
     kind: "kill",
     pid,
     chip: "kill()",
     text: wasRunning
-      ? `You closed ${p.name}. The kernel kills P${pid} mid-run, frees the CPU and takes back its ${p.memPages} pages of memory.`
-      : `You closed ${p.name}. P${pid} is terminated, removed from the ready queue and its memory is freed.`,
+      ? `You closed ${p.name}. The kernel kills P${pid} mid-run, frees the CPU, takes back its ${p.memPages} pages of memory and releases its devices.${handed}`
+      : `You closed ${p.name}. P${pid} is terminated, removed from the ready queue and its memory is freed.${handed}`,
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * Device syscalls
+ * ------------------------------------------------------------------ */
+
+/** Switch printers/cameras/speakers on or off. Off is the default. */
+export function setDevicesEnabled(state: MachineState, enabled: boolean): MachineState {
+  if (enabled === state.devicesEnabled) return state;
+
+  if (enabled) {
+    return withLog(
+      { ...state, devicesEnabled: true, devices: createDevices(), deadlock: null },
+      {
+        kind: "config",
+        text: "Devices switched on. Printer, Camera and Music Player now need their hardware before they can run.",
+      },
+    );
+  }
+
+  // Switching off is a reset: free every device and wake anyone who was queued.
+  let processes: Pcb[] = state.processes.map((p) => ({
+    ...p,
+    heldDevices: [] as string[],
+    waitingFor: null,
+  }));
+  let readyQueue = state.readyQueue;
+  for (const p of state.processes) {
+    if (p.state !== "waiting") continue;
+    processes = patchProcess(processes, p.pid, { state: "ready" });
+    if (!readyQueue.includes(p.pid)) readyQueue = [...readyQueue, p.pid];
+  }
+
+  return withLog(
+    {
+      ...state,
+      devicesEnabled: false,
+      devices: createDevices(),
+      deadlock: null,
+      processes,
+      readyQueue,
+    },
+    {
+      kind: "config",
+      text: "Devices switched off. All hardware is freed and any blocked process goes back to Ready.",
+    },
+  );
+}
+
+/**
+ * Ask for a device after a process is already running. This is the control the
+ * Deadlock demo uses: a process can hold its own device and request another,
+ * which makes a wait-for cycle possible.
+ */
+export function requestDevice(state: MachineState, pid: Pid, deviceId: string): MachineState {
+  const p = findProcess(state, pid);
+  if (!p || p.state === "terminated" || p.state === "new" || p.state === "waiting") return state;
+  if (!state.devicesEnabled) return state;
+  if (p.heldDevices.includes(deviceId)) return state;
+
+  const taken = acquire(state.devices, deviceId, pid);
+  let next: MachineState = { ...state, devices: taken.devices };
+
+  if (taken.granted) {
+    next = {
+      ...next,
+      processes: patchProcess(next.processes, pid, {
+        heldDevices: [...p.heldDevices, deviceId],
+      }),
+    };
+  } else {
+    next = {
+      ...next,
+      processes: patchProcess(next.processes, pid, {
+        state: "waiting",
+        waitingFor: deviceId,
+        quantumUsed: 0,
+      }),
+      readyQueue: next.readyQueue.filter((q) => q !== pid),
+      runningPid: next.runningPid === pid ? null : next.runningPid,
+    };
+  }
+
+  next = {
+    ...next,
+    deadlock: findDeadlock(next.devices),
+  };
+
+  const entries: Omit<KernelEvent, "id" | "t">[] = [
+    taken.granted
+      ? {
+          kind: "device" as const,
+          pid,
+          chip: `open("${deviceId}")`,
+          text: `P${pid} (${p.name}) acquired the ${deviceName(state.devices, deviceId)}.`,
+        }
+      : {
+          kind: "device" as const,
+          pid,
+          chip: `open("${deviceId}")`,
+          text: `P${pid} (${p.name}) wants the ${deviceName(state.devices, deviceId)}, but P${taken.holder} has it. P${pid} is now waiting.`,
+        },
+  ];
+  if (next.deadlock && !state.deadlock) {
+    entries.push({
+      kind: "deadlock",
+      chip: "deadlock",
+      text: `Deadlock detected: ${next.deadlock.map((id) => `P${id}`).join(" and ")} are waiting for each other. Kill one of them to break the cycle.`,
+    });
+  }
+
+  return withLog(next, ...entries);
+}
+
+/** Give a device back early (it will be handed to the next waiter). */
+export function releaseDevice(state: MachineState, pid: Pid, deviceId: string): MachineState {
+  const p = findProcess(state, pid);
+  if (!p || !p.heldDevices.includes(deviceId)) return state;
+
+  const outcome = release(state.devices, deviceId, pid);
+  let next: MachineState = {
+    ...state,
+    devices: outcome.devices,
+    processes: patchProcess(state.processes, pid, {
+      heldDevices: p.heldDevices.filter((d) => d !== deviceId),
+    }),
+  };
+  if (outcome.grantedTo !== null) {
+    const woken = wakeWaiters(next.processes, next.readyQueue, [
+      { pid: outcome.grantedTo, deviceId },
+    ]);
+    next = { ...next, processes: woken.processes, readyQueue: woken.readyQueue };
+  }
+  next = { ...next, deadlock: findDeadlock(next.devices) };
+
+  return withLog(next, {
+    kind: "device",
+    pid,
+    chip: `close("${deviceId}")`,
+    text:
+      outcome.grantedTo !== null
+        ? `P${pid} released the ${deviceName(state.devices, deviceId)}. P${outcome.grantedTo} was next in line and is ready to run.`
+        : `P${pid} released the ${deviceName(state.devices, deviceId)}.`,
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Filesystem syscalls
+ * ------------------------------------------------------------------ */
+
+export function fsCreate(state: MachineState, name: string, blocks = 1): MachineState {
+  const allocation = allocateFile(state.fs, name, blocks);
+  if (!allocation) {
+    return withLog(state, {
+      kind: "fs",
+      chip: `create("${name}")`,
+      text: `Could not create "${name}". The name may already exist, or there is no contiguous free space left.`,
+    });
+  }
+  return withLog(
+    { ...state, fs: allocation.fs },
+    {
+      kind: "fs",
+      chip: `create("${name}")`,
+      text: `Created "${allocation.entry.name}" in blocks ${allocation.entry.start}–${
+        allocation.entry.start + allocation.entry.blocks - 1
+      } (${allocation.entry.blocks * 4} KB).`,
+    },
+  );
+}
+
+export function fsDelete(state: MachineState, name: string): MachineState {
+  const nextFs = deleteFileFn(state.fs, name);
+  if (nextFs === state.fs) return state;
+  return withLog(
+    { ...state, fs: nextFs },
+    {
+      kind: "fs",
+      chip: `unlink("${name}")`,
+      text: `Deleted "${name}". Its blocks are free again.`,
+    },
+  );
+}
+
+/** Reading a file turns each of its blocks into a disk request. */
+export function fsRead(state: MachineState, name: string): MachineState {
+  if (!listFiles(state.fs).some((f) => f.name === name)) {
+    return withLog(state, {
+      kind: "fs",
+      chip: `read("${name}")`,
+      text: `There is no file called "${name}".`,
+    });
+  }
+  const cylinders = readCylinders(state.fs, name);
+  let disk = state.disk;
+  for (const cylinder of cylinders) disk = requestCylinder(disk, cylinder);
+  return withLog(
+    { ...state, disk, filesRead: state.filesRead + 1 },
+    {
+      kind: "fs",
+      chip: `read("${name}")`,
+      text: `Reading "${name}" queued ${cylinders.length} block request${
+        cylinders.length === 1 ? "" : "s"
+      } at cylinder${cylinders.length === 1 ? "" : "s"} ${cylinders.join(", ")}. Open the Disk tab to service them.`,
+    },
+  );
 }
 
 /** Change a process's scheduling priority. */
@@ -486,6 +756,7 @@ export function tick(prev: MachineState): MachineState {
   let gantt = prev.gantt;
   let stats = prev.stats;
   let memory = prev.memory;
+  let devices = prev.devices;
   let log = prev.log;
   let nextEventId = prev.nextEventId;
   const admittedThisTick = new Set<Pid>();
@@ -504,10 +775,39 @@ export function tick(prev: MachineState): MachineState {
     return proc ? nextUseDistance(proc, page) : Number.MAX_SAFE_INTEGER;
   };
 
-  /* 1. Admission — a brand new process joins the ready queue. */
+  /* 1. Admission — a brand new process joins the ready queue.
+   *    When devices are on, an app that needs hardware must own it first.
+   *    If somebody else has it, the process is admitted straight into Waiting
+   *    instead of Ready — that is the state the student sees on the timeline. */
   const byId = new Map(processes.map((p) => [p.pid, p]));
   for (const p of processes) {
     if (p.state === "new" && p.admitAt <= now) {
+      const app = getApp(p.appId);
+      if (prev.devicesEnabled && app.device) {
+        const taken = acquire(devices, app.device, p.pid);
+        devices = taken.devices;
+        if (!taken.granted) {
+          patch(p.pid, { state: "waiting", waitingFor: app.device });
+          emit({
+            kind: "device",
+            pid: p.pid,
+            chip: `open("${app.device}")`,
+            text: `${p.name} (P${p.pid}) needs the ${deviceName(devices, app.device)}, but P${taken.holder} has it. P${p.pid} is Waiting instead of Ready.`,
+          });
+          continue;
+        }
+        patch(p.pid, {
+          heldDevices: [...p.heldDevices, app.device],
+          waitingFor: null,
+        });
+        emit({
+          kind: "device",
+          pid: p.pid,
+          chip: `open("${app.device}")`,
+          text: `${p.name} (P${p.pid}) acquired the ${deviceName(devices, app.device)} and moved New → Ready.`,
+        });
+      }
+
       patch(p.pid, { state: "ready", burstAtReady: p.burstRemaining });
       readyQueue = [...readyQueue, p.pid];
       admittedThisTick.add(p.pid);
@@ -516,6 +816,14 @@ export function tick(prev: MachineState): MachineState {
         pid: p.pid,
         text: `${p.name} (P${p.pid}) moved New → Ready. It is now waiting in the ready queue.`,
       });
+    }
+  }
+
+  /* Blocked time is real time spent in the Waiting state. Accumulating it here
+   * keeps `waiting = turnaround − burst − blockedTime` exact. */
+  if (prev.devicesEnabled) {
+    for (const p of processes) {
+      if (p.state === "waiting") patch(p.pid, { blockedTime: p.blockedTime + 1 });
     }
   }
 
@@ -608,6 +916,19 @@ export function tick(prev: MachineState): MachineState {
         runningPid = null;
         stats = { ...stats, completed: stats.completed + 1 };
         memory = freeFramesFor(memory, p.pid);
+        const released = releaseAll(devices, p.pid);
+        devices = released.devices;
+        if (released.granted.length > 0) {
+          const woken = wakeWaiters(processes, readyQueue, released.granted);
+          processes = woken.processes;
+          readyQueue = woken.readyQueue;
+          emit({
+            kind: "device",
+            text: `P${p.pid} exited and released its devices. P${released.granted
+              .map((g) => g.pid)
+              .join(", P")} moved Waiting → Ready.`,
+          });
+        }
         emit({
           kind: "exit",
           pid: p.pid,
@@ -657,6 +978,8 @@ export function tick(prev: MachineState): MachineState {
     gantt,
     stats,
     memory,
+    devices,
+    deadlock: prev.devicesEnabled ? findDeadlock(devices) : null,
     log,
     nextEventId,
   };

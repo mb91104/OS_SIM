@@ -16,6 +16,12 @@ import {
   diskClear as diskClearFn,
   diskReset as diskResetFn,
   setDiskPolicy as setDiskPolicyFn,
+  requestDevice as requestDeviceFn,
+  releaseDevice as releaseDeviceFn,
+  setDevicesEnabled as setDevicesEnabledFn,
+  fsCreate as fsCreateFn,
+  fsDelete as fsDeleteFn,
+  fsRead as fsReadFn,
 } from "../kernel/machine";
 import type { MachineState, Pid } from "../kernel/types";
 
@@ -66,6 +72,16 @@ interface MachineStore {
   clearDisk: () => void;
   resetDisk: () => void;
 
+  /* devices */
+  setDevicesEnabled: (enabled: boolean) => void;
+  requestDevice: (pid: Pid, deviceId: string) => void;
+  releaseDevice: (pid: Pid, deviceId: string) => void;
+
+  /* filesystem */
+  createFile: (name: string, blocks?: number) => void;
+  deleteFile: (name: string) => void;
+  readFile: (name: string) => void;
+
   reset: (seed?: number) => void;
 }
 
@@ -74,7 +90,7 @@ function appendHistory(history: MachineState[], states: MachineState[]): Machine
   return merged.length > HISTORY_LIMIT ? merged.slice(merged.length - HISTORY_LIMIT) : merged;
 }
 
-const booted = createMachine({ seed: DEFAULT_SEED });
+const booted = createMachine({ seed: DEFAULT_SEED, devices: true });
 
 export const useMachine = create<MachineStore>()((set, get) => {
   /** Apply a state change and make it the new head of history. */
@@ -176,8 +192,20 @@ export const useMachine = create<MachineStore>()((set, get) => {
 
     resetDisk: () => commit(diskResetFn(get().live)),
 
+    setDevicesEnabled: (enabled) => commit(setDevicesEnabledFn(get().live, enabled)),
+
+    requestDevice: (pid, deviceId) => commit(requestDeviceFn(get().live, pid, deviceId)),
+
+    releaseDevice: (pid, deviceId) => commit(releaseDeviceFn(get().live, pid, deviceId)),
+
+    createFile: (name, blocks = 1) => commit(fsCreateFn(get().live, name, blocks)),
+
+    deleteFile: (name) => commit(fsDeleteFn(get().live, name)),
+
+    readFile: (name) => commit(fsReadFn(get().live, name)),
+
     reset: (seed) => {
-      const fresh = createMachine({ seed: seed ?? DEFAULT_SEED });
+      const fresh = createMachine({ seed: seed ?? DEFAULT_SEED, devices: true });
       set({ live: fresh, history: [fresh], viewIndex: 0, running: false });
     },
   };

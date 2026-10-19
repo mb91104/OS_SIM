@@ -5,6 +5,7 @@ import { useKernelState } from "../../state/useMachine";
 import { useUi } from "../../state/useUi";
 import { InspectorSection } from "./InspectorSection";
 import { DiskSection } from "./DiskSection";
+import { DeviceSection } from "./DeviceSection";
 import { MemorySection } from "./MemorySection";
 import { PcbSection } from "./PcbSection";
 
@@ -122,7 +123,7 @@ function QueuesSection() {
           <span className="qrow__label">Waiting</span>
           <div className="qrow__items">
             {blocked.length === 0 ? (
-              <span className="qrow__empty">no device waits yet (arrives in M6)</span>
+              <span className="qrow__empty">no process is blocked on a device</span>
             ) : (
               blocked.map((p) => <PChip key={p.pid} p={p} />)
             )}
@@ -156,6 +157,7 @@ export function XrayPanel() {
     { id: "processes", label: "Processes" },
     { id: "memory", label: "Memory" },
     { id: "disk", label: "Disk" },
+    { id: "devices", label: "Devices" },
     { id: "inspector", label: "Inspect" },
   ];
 
@@ -190,6 +192,8 @@ export function XrayPanel() {
       {tab === "memory" && <MemorySection />}
 
       {tab === "disk" && <DiskSection />}
+
+      {tab === "devices" && <DeviceSection />}
 
       {tab === "inspector" && <InspectorSection />}
     </aside>

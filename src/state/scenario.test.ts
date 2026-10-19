@@ -24,6 +24,7 @@ const scenario = (over: Partial<Scenario> = {}): Scenario => ({
   frames: DEFAULT_FRAMES,
   replacement: "lru",
   apps: ["photos", "browser", "camera"],
+  devices: true,
   ff: 0,
   ...over,
 });
@@ -47,7 +48,16 @@ describe("scenario links", () => {
       frames: 6,
       replacement: "clock",
       apps: ["browser", "camera"],
+      devices: true,
     });
+  });
+
+  it("carries the device setting through a link", () => {
+    const parsed = scenarioFromUrl("?s=5&d=0&apps=printer");
+    expect(parsed?.devices).toBe(false);
+
+    applyScenario({ ...scenario(), devices: false });
+    expect(useMachine.getState().live.devicesEnabled).toBe(false);
   });
 
   it("filters unknown apps and clamps silly numbers", () => {

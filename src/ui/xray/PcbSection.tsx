@@ -45,6 +45,7 @@ export function PcbSection() {
             <th title="CPU time still owed">Left</th>
             <th title="Pages currently resident in RAM">RAM</th>
             <th title="Time spent waiting for the CPU">Wait</th>
+            <th title="Time spent blocked on a device">Block</th>
             <th title="Total time from arrival to finishing">Turn</th>
           </tr>
         </thead>
@@ -69,6 +70,7 @@ export function PcbSection() {
                   {residentPages(state.memory, p.pid).length}/{p.memPages}
                 </td>
                 <td className={m.finished ? "" : "dim"}>{m.waiting}</td>
+                <td className={p.blockedTime > 0 ? "blocked" : "dim"}>{p.blockedTime}</td>
                 <td className={m.finished ? "" : "dim"}>{m.turnaround}</td>
               </tr>
             );

@@ -1,4 +1,7 @@
+import { useState } from "react";
+import { FS_BLOCKS, listFiles, usedBlocks } from "../kernel/fs";
 import type { Pcb } from "../kernel/types";
+import { useKernelState, useMachine } from "../state/useMachine";
 
 /**
  * The inside of an app window. Each one is a toy, but the progress bar above it
@@ -7,6 +10,11 @@ import type { Pcb } from "../kernel/types";
  */
 export function AppWindow({ proc }: { proc: Pcb }) {
   const appId = proc.appId;
+  const state = useKernelState();
+  const createFile = useMachine((s) => s.createFile);
+  const deleteFile = useMachine((s) => s.deleteFile);
+  const readFile = useMachine((s) => s.readFile);
+  const [fileName, setFileName] = useState("notes.txt");
 
   switch (appId) {
     case "browser":
@@ -65,20 +73,52 @@ export function AppWindow({ proc }: { proc: Pcb }) {
     case "files":
       return (
         <div className="fake">
-          {[
-            ["holiday.jpg", "2.4 MB"],
-            ["project.zip", "18 MB"],
-            ["notes.txt", "4 KB"],
-            ["song.mp3", "6.1 MB"],
-          ].map(([name, size]) => (
-            <div className="fake__row" key={name}>
-              <span>📄 {name}</span>
-              <span>{size}</span>
-            </div>
-          ))}
+          <div className="fake__row">
+            <span>
+              📁 / ({usedBlocks(state.fs)}/{FS_BLOCKS} blocks used)
+            </span>
+            <span>{listFiles(state.fs).length} file(s)</span>
+          </div>
+
+          {listFiles(state.fs).length === 0 ? (
+            <p className="note">The disk is empty. Create a file below.</p>
+          ) : (
+            listFiles(state.fs).map((file) => (
+              <div className="fake__row" key={file.name}>
+                <span>📄 {file.name}</span>
+                <span className="fs-row__actions">
+                  <span className="dim">
+                    {file.blocks} block{file.blocks === 1 ? "" : "s"}
+                  </span>
+                  <button className="btn btn--tiny" onClick={() => readFile(file.name)}>
+                    read
+                  </button>
+                  <button className="btn btn--tiny" onClick={() => deleteFile(file.name)}>
+                    delete
+                  </button>
+                </span>
+              </div>
+            ))
+          )}
+
+          <div className="diskform" style={{ marginTop: 8 }}>
+            <input
+              className="diskform__input"
+              value={fileName}
+              onChange={(e) => setFileName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") createFile(fileName, 1);
+              }}
+              aria-label="New file name"
+            />
+            <button className="btn" onClick={() => createFile(fileName, 1)}>
+              + Create
+            </button>
+          </div>
+
           <p className="note">
-            Reading a file means asking the disk for specific blocks. Open the X-ray panel's Disk tab
-            to watch the head travel between them.
+            Reading a file asks the disk for one block per file block. Open the X-ray panel's Disk
+            tab to watch the head travel between the cylinders those blocks live on.
           </p>
         </div>
       );
@@ -94,8 +134,9 @@ export function AppWindow({ proc }: { proc: Pcb }) {
           <div className="fake__line" style={{ width: "90%" }} />
           <div className="fake__line" style={{ width: "45%" }} />
           <p className="note">
-            There is only one printer. Two apps printing at once can end up waiting on each other
-            forever — that is deadlock, and you will be able to cause it in M6.
+            There is only one printer. A second Printer app waits in the device queue — open the
+            X-ray panel's Devices tab to see the wait. Ask two processes for each other's device to
+            cause a deadlock.
           </p>
         </div>
       );

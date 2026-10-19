@@ -6,9 +6,8 @@ import type { Pid } from "./types";
  * so the abstraction lands before the terminology does.
  *
  * `burst` is the range of CPU time (in simulated ms) the app needs — drawn from
- * the seeded RNG so every run is reproducible. `memPages` is what the process
- * will declare once memory management ships in M3; `device` is the single-instance
- * resource it will fight over in M6.
+ * the seeded RNG so every run is reproducible. `memPages` is the process's
+ * working-set size; `device` is the single-instance resource it needs.
  */
 export interface AppDef {
   id: string;
@@ -20,7 +19,7 @@ export interface AppDef {
   memPages: number;
   /** Default scheduling priority: 1 is the highest. */
   priority: number;
-  /** Single-instance device this app needs (reserved for M6). */
+  /** Single-instance device this app needs. */
   device?: "printer" | "camera" | "speakers";
 }
 

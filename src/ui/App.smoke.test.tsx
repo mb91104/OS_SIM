@@ -212,4 +212,62 @@ describe("ToyOS shell", () => {
     expect(after).toContain("4/4 frames");
     expect(after).toContain("Memory resized to 4 frames");
   });
+
+  it("queues a second printer and shows the device wait", () => {
+    interact(() => {
+      useMachine.getState().launch("printer");
+      useMachine.getState().launch("printer");
+      useMachine.getState().advanceTicks(2);
+      useUi.getState().setXrayTab("devices");
+    });
+
+    const state = useMachine.getState().live;
+    expect(state.processes[1].state).toBe("waiting");
+    expect(state.processes[1].waitingFor).toBe("printer");
+
+    const markup = html();
+    expect(markup).toContain("Devices");
+    expect(markup).toContain("1/1 in use");
+    expect(markup).toContain("Deadlock sandbox");
+    expect(markup).toContain("Printer");
+  });
+
+  it("surfaces a deadlock and lets the user break it", () => {
+    interact(() => {
+      useMachine.getState().launch("printer");
+      useMachine.getState().launch("camera");
+      useMachine.getState().advanceTicks(2);
+      useMachine.getState().requestDevice(1, "camera");
+      useMachine.getState().requestDevice(2, "printer");
+      useUi.getState().setXrayTab("devices");
+    });
+
+    expect(useMachine.getState().live.deadlock?.sort()).toEqual([1, 2]);
+    expect(html()).toContain("Deadlock.");
+
+    const after = interact(() => useMachine.getState().kill(1));
+    expect(useMachine.getState().live.deadlock).toBeNull();
+    expect(after).not.toContain("Deadlock.");
+  });
+
+  it("creates, reads and deletes a real file from the Files app", () => {
+    interact(() => {
+      const pid = useMachine.getState().launch("files");
+      useUi.getState().openApp(pid, "files");
+      useMachine.getState().advanceTicks(2);
+    });
+    expect(html()).toContain("blocks used");
+
+    const created = interact(() => useMachine.getState().createFile("notes.txt", 2));
+    expect(created).toContain("notes.txt");
+    expect(created).toContain("2 blocks");
+
+    const read = interact(() => useMachine.getState().readFile("notes.txt"));
+    expect(useMachine.getState().live.disk.queue).toHaveLength(2);
+    expect(read).toContain("queued 2 block requests");
+
+    const deleted = interact(() => useMachine.getState().deleteFile("notes.txt"));
+    expect(deleted).not.toContain("📄 notes.txt");
+    expect(deleted).toContain("The disk is empty. Create a file below.");
+  });
 });

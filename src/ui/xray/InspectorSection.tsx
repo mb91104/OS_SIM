@@ -10,7 +10,7 @@ const NEXT_STEP: Record<string, string> = {
   new: "It exists, but the kernel has not admitted it to the ready queue yet. That happens on the next tick.",
   ready: "It sits in the ready queue. Round Robin will pick it once the processes ahead of it finish their slice.",
   running: "It keeps the CPU until it finishes its work or its time slice runs out.",
-  waiting: "It is blocked on something outside the CPU. Devices arrive in milestone M6, so nothing blocks yet.",
+  waiting: "It is blocked on a device that another process owns. It uses no CPU until the device is released.",
   terminated: "It is gone. Its PID and its memory have been released for the next process to use.",
 };
 
@@ -94,6 +94,10 @@ export function InspectorSection() {
         <div className="metric">
           <span>Waiting so far</span>
           <b>{m.waiting} ms</b>
+        </div>
+        <div className="metric">
+          <span>Blocked on device</span>
+          <b>{p.blockedTime} ms</b>
         </div>
         <div className="metric">
           <span>Priority</span>

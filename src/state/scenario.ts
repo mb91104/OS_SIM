@@ -23,6 +23,8 @@ export interface Scenario {
   replacement: Replacement;
   /** App ids, in launch order (duplicates allowed). */
   apps: string[];
+  /** Whether the printer/camera/speaker contention is on. */
+  devices: boolean;
   /** Simulated milliseconds to fast-forward after launching. */
   ff: number;
 }
@@ -50,6 +52,7 @@ export function scenarioFromState(state: MachineState): Scenario {
     frames: state.memory.frames.length,
     replacement: state.memory.replacement,
     apps: state.processes.map((p) => p.appId),
+    devices: state.devicesEnabled,
     ff: 0,
   };
 }
@@ -62,6 +65,7 @@ export function scenarioToParams(scenario: Scenario): URLSearchParams {
   params.set("f", String(scenario.frames));
   params.set("r", scenario.replacement);
   params.set("apps", scenario.apps.join(","));
+  if (!scenario.devices) params.set("d", "0");
   if (scenario.ff > 0) params.set("ff", String(scenario.ff));
   return params;
 }
@@ -92,6 +96,7 @@ export function scenarioFromUrl(search: string): Scenario | null {
     frames: clampInt(params.get("f"), FRAMES_MIN, FRAMES_MAX, DEFAULT_FRAMES),
     replacement: oneOf(params.get("r"), REPLACEMENTS, "lru"),
     apps,
+    devices: params.get("d") !== "0",
     ff: clampInt(params.get("ff"), 0, 5000, 0),
   };
 }
@@ -105,6 +110,7 @@ export function applyScenario(scenario: Scenario): void {
   machine.setQuantum(scenario.quantum);
   machine.setFrames(scenario.frames);
   machine.setReplacement(scenario.replacement);
+  if (!scenario.devices) machine.setDevicesEnabled(false);
 
   for (const appId of scenario.apps) {
     const pid = useMachine.getState().launch(appId);

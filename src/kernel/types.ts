@@ -43,8 +43,12 @@ export interface Pcb {
   admitAt: number;
   firstRunTime: number | null;
   completionTime: number | null;
-  /** Simulated ms spent blocked on a device (always 0 until M6). */
+  /** Simulated ms spent blocked on a device. */
   blockedTime: number;
+  /** Device ids this process currently owns (one for most apps, two in deadlock demos). */
+  heldDevices: string[];
+  /** Device id this process is blocked on, or null when it is not waiting. */
+  waitingFor: string | null;
   /** CPU time consumed inside the current quantum (RR only). */
   quantumUsed: number;
 
@@ -78,7 +82,10 @@ export type KernelEventKind =
   | "config"
   | "fault"
   | "memory"
-  | "disk";
+  | "disk"
+  | "device"
+  | "deadlock"
+  | "fs";
 
 /**
  * A single line in the kernel log. `text` is written for a 16-year-old reader —
@@ -123,6 +130,16 @@ export interface MachineState {
   memory: MemoryState;
   /** The disk head and the queue of cylinders waiting to be read. */
   disk: DiskState;
+  /** Printers, cameras and speakers. Empty holds mean the device is free. */
+  devices: DeviceState[];
+  /** Devices are opt-in so scheduling questions stay device-free by default. */
+  devicesEnabled: boolean;
+  /** PIDs caught in a wait-for cycle, or null when the system is deadlock-free. */
+  deadlock: Pid[] | null;
+  /** Disk blocks backing the little filesystem. */
+  fs: FsBlock[];
+  /** How many file reads have been issued (shown in the Files window). */
+  filesRead: number;
 
   gantt: GanttSlice[];
   stats: MachineStats;
@@ -132,9 +149,8 @@ export interface MachineState {
 }
 
 /* ------------------------------------------------------------------ *
- * Reserved for later milestones (M3 memory, M5 disk, M6 devices/files).
- * Declared here so the root state shape is agreed up front rather than
- * retrofitted — see the plan's "biggest risk" note.
+ * Supporting records for the later milestones: paging frames, the disk,
+ * devices and filesystem blocks. Plain data, so MachineState stays pure.
  * ------------------------------------------------------------------ */
 
 export interface Frame {

@@ -13,7 +13,7 @@ the disk head slides across the platter.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 67 unit + integration tests
+npm test           # 84 unit + integration tests
 npm run build      # type-check, then production build
 ```
 
@@ -29,7 +29,7 @@ milliseconds.
 | **M3** Memory | done | 2–32 frames, per-process page loads, frame table, free-on-exit |
 | **M4** Paging & replacement | done | Demand paging, hits/faults, LRU / FIFO / Clock / OPT(timal) |
 | **M5** Disk scheduling | done | FCFS, SSTF, SCAN, C-SCAN, LOOK, C-LOOK; seek totals and head animation |
-| **M6** Devices & deadlock | planned | `waiting` state, `blockedTime` and device types are reserved |
+| **M6** Devices, files & deadlock | done | Single-instance printer/camera/speakers, real `waiting` + blocked time, device queues, a filesystem whose reads drive the disk, and a deadlock sandbox |
 | **M7** Shareable scenarios | done | A Share button copies a link that rebuilds the same seed, settings and apps |
 
 ### The X-ray panel
@@ -41,8 +41,36 @@ milliseconds.
   rate, evictions, plus live frame-count and replacement-policy controls.
 - **Disk** — an SVG platter view, the pending request queue, the head's last
   movement, and the seek total for the chosen policy.
+- **Devices** — printer/camera/speaker holders and wait queues, blocked time, a
+  Deadlock sandbox, and the on/off switch for hardware contention.
 - **Inspect** — a plain-English explanation of one process, plus kill and
   reprioritise actions.
+
+### Devices, files and deadlock
+
+Device contention is on in the app by default. The Printer, Camera and Music
+Player each need one single-instance device, take it when they are admitted, and
+keep it until they exit. A second app that needs the same hardware sits in
+`waiting`; its `blockedTime` grows every tick, and the kernel hands it the device
+as soon as the holder releases it (on exit or when killed).
+
+To build a deadlock:
+
+1. Open the **Devices** tab (X-ray).
+2. Launch **Printer** and **Camera**, then let the clock run until both are Ready
+   or Running.
+3. Ask the Printer for the camera, and the Camera for the printer, using the
+   **Deadlock sandbox** buttons.
+4. The wait-for graph now has a cycle. Kill either process to release its device
+   and let the other finish.
+
+The **Files** app is real: creating a file allocates contiguous blocks, reading it
+queues one disk request per block, and deleting it frees them. Those requests
+appear in the Disk tab, so a file read is a concrete way to drive FCFS/SSTF/SCAN.
+
+Unit tests keep devices **off** by default (`createMachine()`), so the exact
+scheduling timings are unchanged. The app boots with them on; shared links record
+the setting with `d=0` when they are off.
 
 ## Design rules
 
@@ -64,7 +92,7 @@ That gives three useful properties:
 
 ```
 src/kernel/   pure simulator: machine.ts (CPU/scheduler), memory.ts, disk.ts,
-              types.ts, catalog.ts, seeded rng.ts, plus unit tests
+              devices.ts, fs.ts, types.ts, catalog.ts, seeded rng.ts, plus tests
 src/state/    zustand stores (machine history + UI), clock, scenario links
 src/ui/       toolbar, timeline, desktop, dock, task manager, X-ray sections
 src/lib/      formatting helpers and shared state colours
@@ -107,5 +135,10 @@ Coverage highlights:
   string with 3 frames gives FIFO 15, LRU 12, OPT 9 faults.
 - **Disk scheduling** — the textbook queue at cylinder 53 gives FCFS 640,
   SSTF 236, LOOK 208, SCAN 236, C-SCAN 386, C-LOOK 326 cylinders.
+- **Devices** — single-instance contention, queue order, grant-on-exit/kill,
+  blocked-time accounting and a deliberate two-process deadlock.
+- **Filesystem** — first-fit allocation, out-of-space errors, deletes, and file
+  reads turning into the expected disk cylinders.
 - **UI smoke tests** — the whole shell mounts in jsdom and exercises launch,
-  kill, rewind, memory controls and the disk tab.
+  kill, rewind, memory controls, the disk tab, the device deadlock banner and
+  creating/reading a file.
