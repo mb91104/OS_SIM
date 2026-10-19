@@ -1354,6 +1354,19 @@ input[type="range"]::-moz-range-thumb {
   color: #67e8f9;
 }
 
+.console__line[data-kind="device"] .console__text {
+  color: #6ee7b7;
+}
+
+.console__line[data-kind="fs"] .console__text {
+  color: #fcd34d;
+}
+
+.console__line[data-kind="deadlock"] .console__text {
+  color: var(--danger);
+  font-weight: 650;
+}
+
 .chip {
   display: inline-block;
   padding: 0 6px;

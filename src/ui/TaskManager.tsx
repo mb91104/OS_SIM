@@ -47,7 +47,10 @@ export function TaskManager() {
             <div className="tm__name">
               <b>{p.name}</b>
               <small>
-                P{p.pid} · {done}/{p.burstTotal} ms · {p.memPages} pages
+                P{p.pid} · {done}/{p.burstTotal} ms ·{" "}
+                {p.waitingFor
+                  ? `waiting for ${p.waitingFor} (${p.blockedTime} ms)`
+                  : `${p.memPages} pages`}
               </small>
             </div>
 

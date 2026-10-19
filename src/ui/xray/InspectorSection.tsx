@@ -109,6 +109,16 @@ export function InspectorSection() {
             {resident.length}/{p.memPages}
           </b>
         </div>
+        <div className="metric">
+          <span>Devices held</span>
+          <b>{p.heldDevices.length === 0 ? "none" : p.heldDevices.join(", ")}</b>
+        </div>
+        {p.waitingFor && (
+          <div className="metric">
+            <span>Waiting for</span>
+            <b>{p.waitingFor}</b>
+          </div>
+        )}
       </div>
 
       {m.finished && (
