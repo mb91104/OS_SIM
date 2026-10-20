@@ -13,12 +13,18 @@ the disk head slides across the platter.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 84 unit + integration tests
+npm test           # 87 unit + integration tests
 npm run build      # type-check, then production build
 ```
 
 `?demo=1` opens a fixed set of apps. Add `&ff=45` to fast-forward 45 simulated
-milliseconds.
+milliseconds. Three focused demos are also built in:
+
+| URL | What you get |
+|---|---|
+| `?demo=devices` | Two Printer apps: one owns the printer, the other waits |
+| `?demo=deadlock` | Printer and Camera each waiting for the other's device |
+| `?demo=files` | A Files window with real files and pending disk reads |
 
 ## What works today
 

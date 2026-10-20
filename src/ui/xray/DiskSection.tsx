@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DISK_MAX, DISK_MIN, type DiskPolicy } from "../../kernel/disk";
+import { cylinderForBlock, FS_BLOCKS, listFiles, usedBlocks } from "../../kernel/fs";
 import { useKernelState, useMachine } from "../../state/useMachine";
 
 const POLICIES: { id: DiskPolicy; label: string; hint: string }[] = [
@@ -73,13 +74,15 @@ function Track() {
 }
 
 export function DiskSection() {
-  const disk = useKernelState().disk;
+  const state = useKernelState();
+  const disk = state.disk;
   const setPolicy = useMachine((s) => s.setDiskPolicy);
   const request = useMachine((s) => s.requestCylinder);
   const step = useMachine((s) => s.stepDisk);
   const drain = useMachine((s) => s.drainDisk);
   const clear = useMachine((s) => s.clearDisk);
   const reset = useMachine((s) => s.resetDisk);
+  const readFile = useMachine((s) => s.readFile);
   const [value, setValue] = useState("98");
 
   const hint = POLICIES.find((p) => p.id === disk.policy)?.hint ?? "";
@@ -203,6 +206,61 @@ export function DiskSection() {
           Seek time is measured in cylinders: moving one track costs one unit. Compare the total for
           each policy — the clever ones make the head travel much less, but can starve far requests.
         </p>
+      </div>
+
+      <div className="panel">
+        <div className="panel__title">
+          Filesystem
+          <small>
+            {usedBlocks(state.fs)}/{FS_BLOCKS} blocks
+          </small>
+        </div>
+
+        <div className="fsgrid">
+          {state.fs.map((block) => (
+            <div
+              key={block.index}
+              className={`fsblock fsblock--${block.kind}`}
+              title={`Block ${block.index} · ${block.kind}${
+                block.label ? ` · ${block.label}` : ""
+              } · cylinder ${cylinderForBlock(block.index)}`}
+            >
+              {block.index}
+            </div>
+          ))}
+        </div>
+
+        <div className="fslegend">
+          <span><i className="fsblock fsblock--dir" /> directory</span>
+          <span><i className="fsblock fsblock--index" /> inode</span>
+          <span><i className="fsblock fsblock--file" /> data</span>
+          <span><i className="fsblock fsblock--free" /> free</span>
+        </div>
+
+        {listFiles(state.fs).length === 0 ? (
+          <p className="note">No files yet. Open the Files app and create one.</p>
+        ) : (
+          listFiles(state.fs).map((file) => {
+            const cylinders = state.fs
+              .filter((b) => b.label === file.name && b.kind !== "free")
+              .map((b) => cylinderForBlock(b.index));
+            return (
+              <div className="fake__row" key={file.name}>
+                <span>
+                  📄 {file.name}{" "}
+                  <span className="dim">
+                    blocks {file.start}–{file.start + file.blocks - 1}
+                  </span>
+                </span>
+                <span className="fs-row__actions">
+                  <button className="btn btn--tiny" onClick={() => readFile(file.name)}>
+                    queue {cylinders.length} read{cylinders.length === 1 ? "" : "s"}
+                  </button>
+                </span>
+              </div>
+            );
+          })
+        )}
       </div>
     </>
   );

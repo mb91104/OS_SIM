@@ -181,6 +181,7 @@ describe("ToyOS shell", () => {
     expect(queued).toContain("Seek accounting");
     expect(queued).toContain("8 waiting");
     expect(queued).toContain("Textbook queue");
+    expect(queued).toContain("Filesystem");
 
     const drained = interact(() => useMachine.getState().drainDisk());
     expect(useMachine.getState().live.disk.totalSeekTime).toBe(236);

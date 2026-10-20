@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { applyDemoScenario, DEMO_APPS } from "./state/demoScenario";
+import { applyDeadlockDemo, applyDemoScenario, applyDeviceDemo, applyFilesDemo, DEMO_APPS } from "./state/demoScenario";
 import { applyScenario, scenarioFromUrl } from "./state/scenario";
 import "./styles/global.css";
 
@@ -15,6 +15,12 @@ const params = new URLSearchParams(window.location.search);
 const scenario = scenarioFromUrl(window.location.search);
 if (scenario) {
   applyScenario(scenario);
+} else if (params.get("demo") === "deadlock") {
+  applyDeadlockDemo();
+} else if (params.get("demo") === "devices") {
+  applyDeviceDemo();
+} else if (params.get("demo") === "files") {
+  applyFilesDemo();
 } else if (params.has("demo")) {
   applyDemoScenario(DEMO_APPS, Number(params.get("ff") ?? 0) || 0);
 }
