@@ -62,7 +62,7 @@ export function PcbSection() {
                 <td style={{ color: p.color }}>P{p.pid}</td>
                 <td style={{ textAlign: "left" }}>{p.name}</td>
                 <td>
-                  <span style={{ color: tint.fg }}>{STATE_LABEL[p.state]}</span>
+                  <span style={{ color: tint.ink }}>{STATE_LABEL[p.state]}</span>
                 </td>
                 <td>{p.priority}</td>
                 <td className={p.burstRemaining === 0 ? "dim" : ""}>{p.burstRemaining}</td>

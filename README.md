@@ -8,12 +8,16 @@ The point is to make the textbook diagrams move: processes are launched from a
 Dock, the CPU hands out time slices, pages get faulted in and out of frames, and
 the disk head slides across the platter.
 
+The whole surface is a monochrome terminal: one mono typeface, square panes,
+ASCII readouts, and no colour anywhere. Process identity is a grey step plus its
+PID; the only filled state is `running`, shown in reverse video.
+
 ## Quick start
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 87 unit + integration tests
+npm test           # 88 unit + integration tests
 npm run build      # type-check, then production build
 ```
 
@@ -102,7 +106,7 @@ src/kernel/   pure simulator: machine.ts (CPU/scheduler), memory.ts, disk.ts,
 src/state/    zustand stores (machine history + UI), clock, scenario links
 src/ui/       toolbar, timeline, desktop, dock, task manager, X-ray sections
 src/lib/      formatting helpers and shared state colours
-src/styles/   one global stylesheet (dark, projector-friendly)
+src/styles/   one global stylesheet (monochrome terminal, projector-friendly)
 ```
 
 ## Keyboard
@@ -147,4 +151,5 @@ Coverage highlights:
   reads turning into the expected disk cylinders.
 - **UI smoke tests** — the whole shell mounts in jsdom and exercises launch,
   kill, rewind, memory controls, the disk tab, the device deadlock banner and
-  creating/reading a file.
+  creating/reading a file. One test also fails if any painted colour has a hue,
+  which keeps the monochrome rule honest.

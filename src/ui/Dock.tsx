@@ -1,6 +1,7 @@
 import { APPS } from "../kernel/catalog";
 import { useKernelState, useMachine } from "../state/useMachine";
 import { useUi } from "../state/useUi";
+import { AppIcon } from "./AppIcon";
 
 /**
  * The Dock is the whole user interface. Clicking an icon is a syscall —
@@ -32,7 +33,7 @@ export function Dock() {
     <div className="dock-wrap">
       <div className="dock">
         <button className="dock__item" onClick={openTaskManager} title="Reopen the Task Manager window">
-          <span className="dock__icon">🧭</span>
+          <AppIcon appId="system" size={18} className="dock__icon" />
           <span className="dock__label">Task Manager</span>
         </button>
 
@@ -47,7 +48,7 @@ export function Dock() {
               onClick={() => startApp(app.id, app.name)}
               title={`${app.blurb} (needs ~${app.burst[0]}–${app.burst[1]} ms of CPU, ${app.memPages} pages)`}
             >
-              <span className="dock__icon">{app.icon}</span>
+              <AppIcon appId={app.id} size={18} className="dock__icon" />
               <span className="dock__label">{app.name}</span>
               {count > 0 && <span className="dock__badge">{count}</span>}
             </button>

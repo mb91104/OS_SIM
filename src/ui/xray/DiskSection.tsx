@@ -16,7 +16,7 @@ const TEXTBOOK = [98, 183, 37, 122, 14, 124, 65, 67];
 
 /** Cylinder (0–199) → x coordinate in the little SVG track. */
 const X0 = 10;
-const XW = 280;
+const XW = 272;
 const toX = (c: number) => X0 + (c / DISK_MAX) * XW;
 
 function Track() {
@@ -30,11 +30,11 @@ function Track() {
       role="img"
       aria-label="Disk head position and request queue"
     >
-      <rect x={X0} y={26} width={XW} height={6} rx={3} fill="#1a2342" />
+      <rect x={X0} y={26} width={XW} height={6} rx={0} fill="var(--surface-3)" />
       {[0, 50, 100, 150, 199].map((c) => (
         <g key={c}>
-          <line x1={toX(c)} x2={toX(c)} y1={32} y2={36} stroke="#2b3765" strokeWidth={1} />
-          <text x={toX(c)} y={46} fontSize={7} fill="#6f7cad" textAnchor="middle">
+          <line x1={toX(c)} x2={toX(c)} y1={32} y2={36} stroke="var(--line)" strokeWidth={1} />
+          <text x={toX(c)} y={46} fontSize={7} fill="var(--muted-2)" textAnchor="middle">
             {c}
           </text>
         </g>
@@ -42,12 +42,12 @@ function Track() {
 
       {/* Requests still waiting. */}
       {disk.queue.map((c, i) => (
-        <circle key={`${c}-${i}`} cx={toX(c)} cy={29} r={2.6} fill="#5b8cff" />
+        <circle key={`${c}-${i}`} cx={toX(c)} cy={29} r={2.6} fill="var(--text)" />
       ))}
 
       {/* Where the head has already been. */}
       {disk.serviced.slice(-12).map((c, i) => (
-        <circle key={`s-${c}-${i}`} cx={toX(c)} cy={29} r={1.7} fill="#34d399" opacity={0.55} />
+        <circle key={`s-${c}-${i}`} cx={toX(c)} cy={29} r={1.7} fill="var(--muted-2)" opacity={0.55} />
       ))}
 
       {/* The last movement. */}
@@ -57,16 +57,16 @@ function Track() {
           x2={toX(disk.lastMove.to)}
           y1={18}
           y2={18}
-          stroke={disk.lastMove.kind === "sweep" ? "#fbbf24" : "#e9edff"}
+          stroke={disk.lastMove.kind === "sweep" ? "var(--muted-2)" : "var(--text)"}
           strokeWidth={1}
           strokeDasharray={disk.lastMove.kind === "sweep" ? "3 2" : undefined}
         />
       )}
 
       {/* The head. */}
-      <polygon points={`${headX},8 ${headX - 4},15 ${headX + 4},15`} fill="#e9edff" />
-      <line x1={headX} x2={headX} y1={15} y2={26} stroke="#e9edff" strokeWidth={1.5} />
-      <text x={headX} y={5} fontSize={7.5} fill="#e9edff" textAnchor="middle" fontWeight={700}>
+      <polygon points={`${headX},8 ${headX - 4},15 ${headX + 4},15`} fill="var(--text)" />
+      <line x1={headX} x2={headX} y1={15} y2={26} stroke="var(--text)" strokeWidth={1} />
+      <text x={headX} y={5} fontSize={7.5} fill="var(--text)" textAnchor="middle" fontWeight={700}>
         {disk.headPosition}
       </text>
     </svg>
@@ -152,7 +152,7 @@ export function DiskSection() {
 
         <div className="diskform">
           <button className="btn btn--primary" onClick={step} disabled={disk.queue.length === 0}>
-            ⏭ Step head
+            step head
           </button>
           <button className="btn" onClick={drain} disabled={disk.queue.length === 0}>
             Run to empty
@@ -247,7 +247,8 @@ export function DiskSection() {
             return (
               <div className="fake__row" key={file.name}>
                 <span>
-                  📄 {file.name}{" "}
+                  <span className="term__line--muted">-rw- </span>
+                  {file.name}{" "}
                   <span className="dim">
                     blocks {file.start}–{file.start + file.blocks - 1}
                   </span>

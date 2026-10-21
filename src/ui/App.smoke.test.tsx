@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "../App";
+import { APPS } from "../kernel/catalog";
+import { STATE_TINT } from "../lib/format";
 import { useMachine } from "../state/useMachine";
 import { useUi } from "../state/useUi";
 
@@ -48,6 +50,35 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
 });
+
+/** Returns the value if it is a visible hue, or null for greys/vars/keywords. */
+function chroma(value: string): string | null {
+  const v = value.trim();
+  if (!v || v.startsWith("var(") || v === "none" || v === "transparent" || v === "inherit") {
+    return null;
+  }
+
+  let r = -1;
+  let g = -1;
+  let b = -1;
+
+  const hex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(v);
+  if (hex) {
+    const h = hex[1];
+    const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+    r = Number.parseInt(full.slice(0, 2), 16);
+    g = Number.parseInt(full.slice(2, 4), 16);
+    b = Number.parseInt(full.slice(4, 6), 16);
+  } else {
+    const rgb = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(v);
+    if (!rgb) return null;
+    r = Number(rgb[1]);
+    g = Number(rgb[2]);
+    b = Number(rgb[3]);
+  }
+
+  return Math.max(r, g, b) - Math.min(r, g, b) > 4 ? v : null;
+}
 
 describe("ToyOS shell", () => {
   it("renders the desktop, dock, timeline and X-ray panel", () => {
@@ -268,7 +299,41 @@ describe("ToyOS shell", () => {
     expect(read).toContain("queued 2 block requests");
 
     const deleted = interact(() => useMachine.getState().deleteFile("notes.txt"));
-    expect(deleted).not.toContain("📄 notes.txt");
+    // The listing row is gone; the name may still sit in the create box.
+    expect(deleted).not.toContain("-rw-");
     expect(deleted).toContain("The disk is empty. Create a file below.");
+  });
+
+  it("paints only in greys", () => {
+    const offenders: string[] = [];
+
+    for (const value of [
+      ...APPS.map((a) => a.color),
+      ...Object.values(STATE_TINT).flatMap((tint) => [tint.bg, tint.fg, tint.ink]),
+    ]) {
+      const off = chroma(value);
+      if (off) offenders.push(`token ${off}`);
+    }
+
+    interact(() => {
+      for (const app of APPS) {
+        const pid = useMachine.getState().launch(app.id);
+        useUi.getState().openApp(pid, app.id);
+      }
+      useMachine.getState().advanceTicks(5);
+      useUi.getState().setXrayTab("memory");
+    });
+
+    const markup = html();
+    for (const m of markup.matchAll(/(?:fill|stroke)="([^"]+)"/g)) {
+      const off = chroma(m[1]);
+      if (off) offenders.push(`svg ${off}`);
+    }
+    for (const m of markup.matchAll(/(?:color|background|border-color|border-left-color):\s*([^;"]+)/g)) {
+      const off = chroma(m[1]);
+      if (off) offenders.push(`inline ${off}`);
+    }
+
+    expect(offenders).toEqual([]);
   });
 });

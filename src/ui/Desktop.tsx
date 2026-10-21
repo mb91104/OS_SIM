@@ -1,6 +1,7 @@
 import { appForPid } from "../kernel/catalog";
 import { useKernelState } from "../state/useMachine";
 import { useUi } from "../state/useUi";
+import { AppIcon } from "./AppIcon";
 import { AppWindow } from "./AppWindow";
 import { TaskManager } from "./TaskManager";
 import { Toasts } from "./Toasts";
@@ -22,7 +23,12 @@ export function Desktop() {
       {ordered.map((win) => {
         if (win.kind === "taskmanager") {
           return (
-            <Window key={win.id} win={win} icon="🧭" title="Task Manager">
+            <Window
+              key={win.id}
+              win={win}
+              icon={<AppIcon appId="system" size={14} />}
+              title="Task Manager"
+            >
               <TaskManager />
             </Window>
           );
@@ -38,7 +44,7 @@ export function Desktop() {
           <Window
             key={win.id}
             win={win}
-            icon={app?.icon ?? "📦"}
+            icon={<AppIcon appId={app?.id ?? "device"} size={14} />}
             title={proc.name}
             pid={proc.pid}
             progress={progress}

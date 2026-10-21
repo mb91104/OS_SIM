@@ -3,6 +3,7 @@ import type { Pcb } from "../../kernel/types";
 import { STATE_LABEL, STATE_ORDER, STATE_TINT } from "../../lib/format";
 import { useKernelState } from "../../state/useMachine";
 import { useUi } from "../../state/useUi";
+import { AppIcon } from "../AppIcon";
 import { InspectorSection } from "./InspectorSection";
 import { DiskSection } from "./DiskSection";
 import { DeviceSection } from "./DeviceSection";
@@ -13,9 +14,6 @@ import { PcbSection } from "./PcbSection";
 export function PChip({ p, isNext }: { p: Pcb; isNext?: boolean }) {
   const select = useUi((s) => s.select);
   const selectedPid = useUi((s) => s.selectedPid);
-  const icon = { browser: "🌐", music: "🎵", photos: "🖼️", files: "📁", printer: "🖨️", code: "⌨️", camera: "📷" }[
-    p.appId
-  ];
 
   return (
     <button
@@ -24,7 +22,8 @@ export function PChip({ p, isNext }: { p: Pcb; isNext?: boolean }) {
       title={`${p.name} — ${STATE_LABEL[p.state]}`}
     >
       <i className="pchip__dot" style={{ background: p.color }} />
-      {icon} P{p.pid}
+      <AppIcon appId={p.appId} size={12} />
+      P{p.pid}
     </button>
   );
 }
@@ -51,7 +50,7 @@ function CpuSection() {
           {running ? (
             <>
               <div className="cpu__who">
-                <i className="pchip__dot" style={{ background: running.color }} />
+                <AppIcon appId={running.appId} size={14} />
                 <button
                   className="btn--ghost"
                   style={{ padding: 0, border: 0, background: "transparent", fontWeight: 650 }}
@@ -136,7 +135,7 @@ function QueuesSection() {
           const tint = STATE_TINT[s];
           return (
             <div className="counter" key={s} title={s}>
-              <b style={{ color: tint.fg }}>{counts[s]}</b>
+              <b style={{ color: tint.ink }}>{counts[s]}</b>
               <span>{STATE_LABEL[s]}</span>
             </div>
           );

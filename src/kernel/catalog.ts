@@ -1,18 +1,25 @@
 import type { Pid } from "./types";
 
 /**
- * The app catalogue. Clicking an icon on the Dock launches one of these as a
- * process. Names are deliberately the kind of apps a 16-year-old already uses,
+ * The app catalogue. Clicking a launch cell on the Dock starts one of these as
+ * a process. Names are deliberately the kind of apps a 16-year-old already uses,
  * so the abstraction lands before the terminology does.
  *
  * `burst` is the range of CPU time (in simulated ms) the app needs — drawn from
  * the seeded RNG so every run is reproducible. `memPages` is the process's
  * working-set size; `device` is the single-instance resource it needs.
+ *
+ * `tag` replaces a GUI icon and `color` is one step of the monochrome grey ramp.
  */
 export interface AppDef {
   id: string;
   name: string;
-  icon: string;
+  /** Three-letter terminal tag shown where a GUI would put an icon. */
+  tag: string;
+  /**
+   * One step of the monochrome grey ramp (see PROC_RAMP in lib/format). The
+   * kernel copies this onto the PCB, so identity stays a brightness, not a hue.
+   */
   color: string;
   blurb: string;
   burst: [number, number];
@@ -27,8 +34,8 @@ export const APPS: AppDef[] = [
   {
     id: "browser",
     name: "Browser",
-    icon: "🌐",
-    color: "#4aa8ff",
+    tag: "NET",
+    color: "#ffffff",
     blurb: "Loads web pages. Bursty work: lots of waiting, then a big crunch.",
     burst: [70, 110],
     memPages: 3,
@@ -37,8 +44,8 @@ export const APPS: AppDef[] = [
   {
     id: "music",
     name: "Music Player",
-    icon: "🎵",
-    color: "#8b5cf6",
+    tag: "SND",
+    color: "#e0e0e0",
     blurb: "Decodes audio continuously. Needs the CPU regularly or the sound stutters.",
     burst: [40, 60],
     memPages: 1,
@@ -48,8 +55,8 @@ export const APPS: AppDef[] = [
   {
     id: "photos",
     name: "Photos",
-    icon: "🖼️",
-    color: "#f472b6",
+    tag: "IMG",
+    color: "#c4c4c4",
     blurb: "Applies filters to images. Heavy on both CPU and memory.",
     burst: [90, 130],
     memPages: 4,
@@ -58,8 +65,8 @@ export const APPS: AppDef[] = [
   {
     id: "files",
     name: "Files",
-    icon: "📁",
-    color: "#fbbf24",
+    tag: "FS",
+    color: "#a8a8a8",
     blurb: "Copies and moves files. Short CPU bursts, but a lot of disk traffic.",
     burst: [30, 50],
     memPages: 2,
@@ -68,8 +75,8 @@ export const APPS: AppDef[] = [
   {
     id: "printer",
     name: "Printer",
-    icon: "🖨️",
-    color: "#34d399",
+    tag: "PRN",
+    color: "#949494",
     blurb: "Prints a document. Must own the printer device while it works.",
     burst: [50, 80],
     memPages: 2,
@@ -79,8 +86,8 @@ export const APPS: AppDef[] = [
   {
     id: "code",
     name: "Code Editor",
-    icon: "⌨️",
-    color: "#22d3ee",
+    tag: "IDE",
+    color: "#808080",
     blurb: "Compiles and re-compiles your project. Long CPU bursts.",
     burst: [100, 140],
     memPages: 3,
@@ -89,8 +96,8 @@ export const APPS: AppDef[] = [
   {
     id: "camera",
     name: "Camera",
-    icon: "📷",
-    color: "#fb7185",
+    tag: "CAM",
+    color: "#6e6e6e",
     blurb: "Records video in real time. If it waits too long, frames get dropped.",
     burst: [60, 90],
     memPages: 3,
@@ -110,6 +117,11 @@ export function getApp(appId: string): AppDef {
 /** The app a running process is an instance of; falls back gracefully. */
 export function appForPid(appId: string): AppDef | undefined {
   return BY_ID.get(appId);
+}
+
+/** The terminal tag for an app, with a sane fallback for unknown ids. */
+export function appTag(appId: string): string {
+  return BY_ID.get(appId)?.tag ?? "---";
 }
 
 export function shortPid(pid: Pid): string {

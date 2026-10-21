@@ -1,22 +1,19 @@
 import type { Pid } from "../../kernel/types";
 import { useKernelState, useMachine } from "../../state/useMachine";
 import { useUi } from "../../state/useUi";
-
-const ICON: Record<string, string> = {
-  printer: "🖨️",
-  camera: "📷",
-  speakers: "🔊",
-};
+import { AppIcon } from "../AppIcon";
 
 function Chip({ pid }: { pid: Pid }) {
   const state = useKernelState();
   const select = useUi((s) => s.select);
   const p = state.processes.find((x) => x.pid === pid);
   if (!p) return null;
+  const held = state.devices.find((d) => d.heldBy.includes(pid))?.id;
   return (
     <button className="pchip" onClick={() => select(pid)} title={`${p.name} — ${p.state}`}>
       <i className="pchip__dot" style={{ background: p.color }} />
-      {ICON[state.devices.find((d) => d.heldBy.includes(pid))?.id ?? ""] ?? "⚙️"} P{pid}
+      <AppIcon appId={held ?? "device"} size={12} />
+      P{pid}
     </button>
   );
 }
@@ -68,7 +65,7 @@ export function DeviceSection() {
             <div className="device" key={device.id}>
               <div className="device__head">
                 <span>
-                  {ICON[device.id] ?? "⚙️"} <b>{device.name}</b>
+                  <AppIcon appId={device.id} size={14} /> <b>{device.name}</b>
                 </span>
                 <span className="device__count">
                   {device.heldBy.length}/{device.instances} in use

@@ -4,6 +4,7 @@ import { residentPages } from "../../kernel/memory";
 import { STATE_FRIENDLY, STATE_LABEL, STATE_TINT, formatClock } from "../../lib/format";
 import { useKernelState, useMachine } from "../../state/useMachine";
 import { useUi } from "../../state/useUi";
+import { AppIcon } from "../AppIcon";
 
 /** What the kernel will do next, in plain words, for each state. */
 const NEXT_STEP: Record<string, string> = {
@@ -57,7 +58,9 @@ export function InspectorSection() {
       </div>
 
       <div className="inspector__head">
-        <span className="window__icon">{app?.icon ?? "📦"}</span>
+        <span className="window__icon">
+          <AppIcon appId={p.appId} size={16} />
+        </span>
         <b>{p.name}</b>
         <span className="window__pid">P{p.pid}</span>
         <span className="tm__state" style={{ background: tint.bg, color: tint.fg, marginLeft: "auto" }}>
@@ -159,7 +162,7 @@ export function InspectorSection() {
             closeWindowsForPid(p.pid);
           }}
         >
-          ✕ Kill
+          Kill
         </button>
       </div>
 

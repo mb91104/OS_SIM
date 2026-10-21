@@ -21,16 +21,57 @@ export const STATE_FRIENDLY: Record<ProcessState, string> = {
   terminated: "Finished — memory and PID released",
 };
 
+/**
+ * Terminal glyph for each state. Monochrome means shape carries the meaning:
+ * `running` is reverse-video, `waiting` is drawn dim, the rest read as marks.
+ */
+export const STATE_GLYPH: Record<ProcessState, string> = {
+  new: "·",
+  ready: "→",
+  running: "▶",
+  waiting: "⏸",
+  terminated: "✓",
+};
+
 export const STATE_ORDER: ProcessState[] = ["new", "ready", "running", "waiting", "terminated"];
 
-/** Background/foreground pair for state pills, so all views agree on the colours. */
-export const STATE_TINT: Record<ProcessState, { bg: string; fg: string }> = {
-  new: { bg: "rgba(139, 92, 246, 0.18)", fg: "#c4b5fd" },
-  ready: { bg: "rgba(91, 140, 255, 0.18)", fg: "#a9bcff" },
-  running: { bg: "rgba(52, 211, 153, 0.18)", fg: "#6ee7b7" },
-  waiting: { bg: "rgba(251, 191, 36, 0.18)", fg: "#fcd34d" },
-  terminated: { bg: "rgba(111, 124, 173, 0.18)", fg: "#97a3cf" },
+interface StateTint {
+  /** Fill for a pill/chip. */
+  bg: string;
+  /** Text drawn on top of `bg`. */
+  fg: string;
+  /** Standalone text colour on the dark ground (counters, table cells). */
+  ink: string;
+  glyph: string;
+}
+
+/**
+ * Background/foreground sets for state pills, so all views agree. There are no
+ * hues here on purpose — running is the only filled state, which is exactly the
+ * terminal idiom for "has the CPU".
+ */
+export const STATE_TINT: Record<ProcessState, StateTint> = {
+  new: { bg: "transparent", fg: "#8a8a8a", ink: "#8a8a8a", glyph: "·" },
+  ready: { bg: "transparent", fg: "#e6e6e6", ink: "#e6e6e6", glyph: "→" },
+  running: { bg: "#e6e6e6", fg: "#000000", ink: "#ffffff", glyph: "▶" },
+  waiting: { bg: "transparent", fg: "#b8b8b8", ink: "#b8b8b8", glyph: "⏸" },
+  terminated: { bg: "transparent", fg: "#5c5c5c", ink: "#5c5c5c", glyph: "✓" },
 };
+
+/**
+ * Seven-step grey ramp. Process identity used to be a hue; in a monochrome UI
+ * it becomes a brightness plus the always-visible PID label. The steps stay
+ * light enough to be legible as text on the #050505 ground.
+ */
+export const PROC_RAMP = [
+  "#ffffff",
+  "#e0e0e0",
+  "#c4c4c4",
+  "#a8a8a8",
+  "#949494",
+  "#808080",
+  "#6e6e6e",
+] as const;
 
 export function formatMs(t: number): string {
   return `${t} ms`;
@@ -38,6 +79,11 @@ export function formatMs(t: number): string {
 
 export function formatClock(t: number): string {
   return `T+${t} ms`;
+}
+
+/** Zero-padded variant used by the status bar and console. */
+export function formatClockPadded(t: number): string {
+  return `T+${String(t).padStart(4, "0")}`;
 }
 
 export function formatPercent(x: number): string {
@@ -48,21 +94,21 @@ export function formatAverage(x: number): string {
   return Number.isInteger(x) ? `${x}` : x.toFixed(1);
 }
 
-/** Fallback colour when a process has already left the process table. */
+/** Fallback grey when a process has already left the process table. */
 export function pidColor(pid: number): string {
-  const palette = [
-    "#4aa8ff",
-    "#8b5cf6",
-    "#f472b6",
-    "#fbbf24",
-    "#34d399",
-    "#22d3ee",
-    "#fb7185",
-    "#a3e635",
-  ];
-  return palette[(pid - 1) % palette.length];
+  return PROC_RAMP[(pid - 1) % PROC_RAMP.length];
 }
 
-export function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
+/**
+ * Black or off-white ink for text drawn on top of a fill. Keeps Gantt labels
+ * readable whichever step of the grey ramp a process drew.
+ */
+export function inkFor(hex: string): string {
+  const v = Number.parseInt(hex.replace("#", ""), 16);
+  if (!Number.isFinite(v)) return "#e6e6e6";
+  const r = (v >> 16) & 255;
+  const g = (v >> 8) & 255;
+  const b = v & 255;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.62 ? "#000000" : "#e6e6e6";
 }

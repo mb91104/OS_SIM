@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { ProcessState } from "../kernel/types";
-import { pidColor } from "../lib/format";
+import { inkFor, pidColor } from "../lib/format";
 import { useIsLive, useKernelState, useMachine } from "../state/useMachine";
 
 /** The timeline always shows this many simulated milliseconds across its width. */
@@ -68,8 +68,8 @@ export function Timeline() {
         </div>
       </div>
 
-      <svg className="gantt" viewBox={`0 0 ${UNITS} 40`} preserveAspectRatio="none" role="img" aria-label="CPU timeline">
-        <rect x={0} y={LANE_Y} width={UNITS} height={LANE_H} rx={6} fill="#1a2342" />
+      <svg className="gantt" viewBox={`0 0 ${UNITS} 44`} preserveAspectRatio="none" role="img" aria-label="CPU timeline">
+        <rect x={0} y={LANE_Y} width={UNITS} height={LANE_H} rx={0} fill="var(--surface-3)" />
 
         {gridlines.map((t) => (
           <line
@@ -78,7 +78,7 @@ export function Timeline() {
             x2={toUnits(t)}
             y1={LANE_Y}
             y2={LANE_Y + LANE_H}
-            stroke="#2b3765"
+            stroke="var(--line)"
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
@@ -89,7 +89,14 @@ export function Timeline() {
           const w = Math.max(1, toUnits(slice.end) - x);
           return (
             <g key={`${slice.pid}-${slice.start}`}>
-              <rect x={x} y={LANE_Y} width={w} height={LANE_H} fill={colourOf(slice.pid)} rx={0} />
+              <rect
+                x={x}
+                y={LANE_Y}
+                width={Math.max(0, w - 2)}
+                height={LANE_H}
+                fill={colourOf(slice.pid)}
+                rx={0}
+              />
               {w > 26 && (
                 <text
                   x={x + w / 2}
@@ -98,7 +105,7 @@ export function Timeline() {
                   dominantBaseline="central"
                   fontSize={13}
                   fontWeight={700}
-                  fill="#08101f"
+                  fill={inkFor(colourOf(slice.pid))}
                 >
                   P{slice.pid}
                 </text>
@@ -112,16 +119,16 @@ export function Timeline() {
           x1={toUnits(state.now)}
           x2={toUnits(state.now)}
           y1={0}
-          y2={40}
-          stroke="#e9edff"
-          strokeWidth={1.5}
+          y2={44}
+          stroke="var(--text)"
+          strokeWidth={1}
           vectorEffect="non-scaling-stroke"
         />
 
-        <text x={2} y={40} fontSize={9} fill="#6f7cad">
+        <text x={2} y={42} fontSize={9} fill="var(--muted-2)">
           T+{start}
         </text>
-        <text x={UNITS - 2} y={40} fontSize={9} fill="#6f7cad" textAnchor="end">
+        <text x={UNITS - 2} y={42} fontSize={9} fill="var(--muted-2)" textAnchor="end">
           T+{start + SPAN_MS}
         </text>
       </svg>

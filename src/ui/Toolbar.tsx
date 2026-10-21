@@ -1,5 +1,5 @@
 import { QUANTUM_MAX, QUANTUM_MIN } from "../kernel/machine";
-import { formatClock } from "../lib/format";
+import { formatClockPadded } from "../lib/format";
 import { copyScenarioLink } from "../state/scenario";
 import { useIsLive, useKernelState, useMachine } from "../state/useMachine";
 import { useUi } from "../state/useUi";
@@ -59,18 +59,18 @@ export function Toolbar() {
 
       <div className="toolbar__group">
         <span className="toolbar__label">Clock</span>
-        <span className={`clock ${live ? "" : "clock--replay"}`}>{formatClock(state.now)}</span>
+        <span className={`clock ${live ? "" : "clock--replay"}`}>{formatClockPadded(state.now)}</span>
         <button
           className={`btn ${running ? "" : "btn--primary"}`}
           onClick={togglePlay}
           disabled={!running && !started}
           title="Spacebar"
         >
-          <span className="btn__icon">{running ? "❚❚" : "▶"}</span>
+          <span className="btn__icon">{running ? "||" : ">"}</span>
           {running ? "Pause" : "Run"}
         </button>
         <button className="btn" onClick={step} disabled={running} title="Advance one millisecond">
-          <span className="btn__icon">⏭</span>
+          <span className="btn__icon">&gt;&gt;</span>
           Step
         </button>
       </div>
@@ -130,7 +130,7 @@ export function Toolbar() {
         onClick={() => void share()}
         title="Copy a link that rebuilds this exact setup — same seed, same settings, same apps"
       >
-        <span className="btn__icon">🔗</span>
+        <span className="btn__icon">ln</span>
         Share
       </button>
       <button
@@ -138,7 +138,7 @@ export function Toolbar() {
         onClick={() => setXrayOpen(!xrayOpen)}
         title="Show the kernel's inside view (X)"
       >
-        <span className="btn__icon">🔍</span>
+        <span className="btn__icon">#</span>
         X-ray
       </button>
       <button
@@ -148,7 +148,7 @@ export function Toolbar() {
           closeAll();
         }}
       >
-        <span className="btn__icon">↺</span>
+        <span className="btn__icon">..</span>
         Reboot
       </button>
     </header>

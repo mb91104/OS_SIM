@@ -13,7 +13,7 @@ interface DragState {
 
 interface Props {
   win: Win;
-  icon: string;
+  icon: ReactNode;
   title: string;
   pid?: number;
   progress?: number;
@@ -100,8 +100,15 @@ export function Window({ win, icon, title, pid, progress, children }: Props) {
       </div>
 
       {progress !== undefined && (
-        <div className="window__progress">
-          <i style={{ width: `${Math.round(progress * 100)}%` }} />
+        <div
+          className="window__progress"
+          title={`${Math.round(progress * 100)}% of this process's CPU burst is done`}
+        >
+          <i>
+            {"█".repeat(Math.round(progress * 14))}
+            {"░".repeat(14 - Math.round(progress * 14))}
+          </i>{" "}
+          {Math.round(progress * 100)}%
         </div>
       )}
 
